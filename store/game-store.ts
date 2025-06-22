@@ -174,6 +174,22 @@ export const useGameStore = create<GameState>((set, get) => {
 
     submitDrawing: async (canvasData: string) => {
       const state = get()
+      
+      console.log("Submitting drawing:", {
+        playerId: state.playerId,
+        roomId: state.roomId,
+        canvasDataLength: canvasData?.length || 0,
+        currentPhase: state.currentPhase
+      })
+
+      if (!canvasData || !state.playerId || !state.roomId) {
+        console.error("Missing required data for submission:", {
+          hasCanvasData: !!canvasData,
+          hasPlayerId: !!state.playerId,
+          hasRoomId: !!state.roomId
+        })
+        return
+      }
 
       try {
         set({ currentPhase: "scoring" })
@@ -189,6 +205,7 @@ export const useGameStore = create<GameState>((set, get) => {
         })
 
         const data = await response.json()
+        console.log("Submit response:", data)
 
         if (data.success && data.allSubmitted) {
           set({

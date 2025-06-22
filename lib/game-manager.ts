@@ -120,8 +120,13 @@ export class GameManager {
   }
 
   static submitDrawing(playerId: string, roomId: string, canvasData: string): void {
+    console.log(`Submitting drawing for player ${playerId} in room ${roomId}`)
+    
     const room = this.getRoom(roomId)
-    if (!room) return
+    if (!room) {
+      console.error(`Room ${roomId} not found for drawing submission`)
+      return
+    }
 
     // 그림 저장
     const drawingStmt = db.prepare(`
@@ -129,6 +134,7 @@ export class GameManager {
       VALUES (?, ?, ?, ?, ?)
     `)
     drawingStmt.run(playerId, roomId, room.round_number, canvasData, room.current_keyword)
+    console.log(`Drawing saved for player ${playerId}`)
 
     // 플레이어 제출 상태 업데이트
     const playerStmt = db.prepare(`
@@ -137,6 +143,7 @@ export class GameManager {
       WHERE id = ? AND room_id = ?
     `)
     playerStmt.run(playerId, roomId)
+    console.log(`Player ${playerId} marked as submitted`)
   }
 
   static scoreDrawings(roomId: string): Record<string, number> {
@@ -177,7 +184,7 @@ export class GameManager {
       UPDATE rooms 
       SET status = 'scoring' 
       WHERE id = ?
-    `).run(roomId)
+    `).run('scoring', roomId)
 
     return scores
   }
