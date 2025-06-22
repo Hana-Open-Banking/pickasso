@@ -17,6 +17,7 @@ export function useServerEvents(roomId: string) {
   // 타이머 관리를 위한 ref 사용
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastPhaseRef = useRef<string>("")
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const startGameTimer = () => {
     // 기존 타이머가 있다면 정리
@@ -40,6 +41,10 @@ export function useServerEvents(roomId: string) {
         if (currentState.canvasData && currentState.currentPhase === "drawing") {
           console.log("Time's up! Auto-submitting drawing...")
           currentState.submitDrawing(currentState.canvasData)
+        } else if (currentState.currentPhase === "drawing") {
+          // 캔버스 데이터가 없어도 시간이 끝나면 제출 처리
+          console.log("Time's up! No canvas data, but forcing submission...")
+          currentState.submitDrawing("")
         }
       }
     }, 1000)
@@ -55,14 +60,19 @@ export function useServerEvents(roomId: string) {
     }
   }
 
-  useEffect(() => {
-    if (!roomId) return
+  const connectSSE = () => {
+    if (!roomId) return null
 
     const eventSource = new EventSource(`/api/events/${roomId}`)
 
     eventSource.onopen = () => {
       setIsConnected(true)
       console.log("SSE Connected")
+      // 재연결 타이머 정리
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
     }
 
     eventSource.onmessage = (event) => {
@@ -81,7 +91,8 @@ export function useServerEvents(roomId: string) {
             console.log("Room status:", data.room.status)
             const currentPhase = data.room.status === "waiting" ? "lobby" : 
                                data.room.status === "playing" ? "drawing" :
-                               data.room.status === "scoring" ? "scoring" : "result"
+                               data.room.status === "scoring" ? "scoring" : 
+                               data.room.status === "finished" ? "result" : "lobby"
             
             // 상태가 변경되었을 때만 처리
             if (lastPhaseRef.current !== currentPhase) {
@@ -120,12 +131,70 @@ export function useServerEvents(roomId: string) {
               setTimeLeft(60)
               startGameTimer() // 타이머 시작
               console.log("Game started via SSE:", eventData)
+            } else if (latestEvent.event_type === "next_round_started") {
+              // 다음 라운드 시작 이벤트 처리
+              const eventData = JSON.parse(latestEvent.event_data || "{}")
+              console.log("Processing next_round_started event:", eventData)
+              setPhase("drawing")
+              setKeyword(eventData.keyword)
+              setTimeLeft(60)
+              startGameTimer() // 타이머 시작
+              console.log("Next round started via SSE:", eventData)
             } else if (latestEvent.event_type === "round_completed") {
               const eventData = JSON.parse(latestEvent.event_data)
               setScores(eventData.scores)
               setWinner(eventData.winner)
               setPhase("result")
               clearGameTimer()
+            } else if (latestEvent.event_type === "host_left") {
+              // 방장이 나간 경우 - 홈으로 이동
+              console.log("Host left the room, redirecting to home")
+              const eventData = JSON.parse(latestEvent.event_data || "{}")
+              console.log("Host left event data:", eventData)
+              
+              if (eventData.roomDeleted) {
+                // 방이 삭제된 경우 - 홈으로 이동
+                const currentState = useGameStore.getState()
+                currentState.resetGame()
+                window.location.href = "/"
+              }
+            } else if (latestEvent.event_type === "host_transferred") {
+              // 방장이 위임된 경우
+              const eventData = JSON.parse(latestEvent.event_data || "{}")
+              console.log("Host transferred event data:", eventData)
+              
+              const currentState = useGameStore.getState()
+              console.log("Current player ID:", currentState.playerId)
+              console.log("New host ID:", eventData.newHostId)
+              
+              if (currentState.playerId === eventData.newHostId) {
+                // 내가 새로운 방장이 된 경우
+                console.log("I am the new host!")
+                alert(`🎉 축하합니다! 방장이 되었습니다!`)
+                currentState.setIsHost(true)
+              } else {
+                // 다른 사람이 방장이 된 경우
+                console.log(`New host is: ${eventData.newHostNickname || eventData.newHostId}`)
+                if (eventData.newHostNickname) {
+                  alert(`방장이 ${eventData.newHostNickname}님에게 위임되었습니다.`)
+                }
+              }
+              
+              // 플레이어 목록 업데이트
+              if (data.players) {
+                console.log("Updating players list after host transfer:", data.players)
+                setPlayers(data.players)
+              }
+            } else if (latestEvent.event_type === "player_left") {
+              // 일반 참여자가 나간 경우
+              const eventData = JSON.parse(latestEvent.event_data || "{}")
+              console.log("Player left event data:", eventData)
+              
+              // 플레이어 목록 업데이트
+              if (data.players) {
+                console.log("Updating players list after player left:", data.players)
+                setPlayers(data.players)
+              }
             }
           }
         }
@@ -136,13 +205,34 @@ export function useServerEvents(roomId: string) {
 
     eventSource.onerror = () => {
       setIsConnected(false)
-      console.log("SSE Error")
+      console.log("SSE Error, attempting to reconnect...")
+      
+      // 재연결 시도
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+      
+      reconnectTimeoutRef.current = setTimeout(() => {
+        console.log("Attempting to reconnect SSE...")
+        connectSSE()
+      }, 3000)
     }
 
+    return eventSource
+  }
+
+  useEffect(() => {
+    const eventSource = connectSSE()
+
     return () => {
-      eventSource.close()
+      if (eventSource) {
+        eventSource.close()
+      }
       setIsConnected(false)
       clearGameTimer()
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
     }
   }, [roomId, setPlayers, setPhase, setKeyword, setScores, setWinner, setTimeLeft])
 

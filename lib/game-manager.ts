@@ -147,8 +147,12 @@ export class GameManager {
   }
 
   static scoreDrawings(roomId: string): Record<string, number> {
+    console.log(`Starting scoring for room ${roomId}`)
     const room = this.getRoom(roomId)
-    if (!room) return {}
+    if (!room) {
+      console.error(`Room ${roomId} not found for scoring`)
+      return {}
+    }
 
     const drawings = db
       .prepare(`
@@ -157,12 +161,15 @@ export class GameManager {
     `)
       .all(roomId, room.round_number) as Drawing[]
 
+    console.log(`Found ${drawings.length} drawings to score`)
+
     const scores: Record<string, number> = {}
 
     // Mock AI 채점 (실제로는 AI API 호출)
     drawings.forEach((drawing) => {
       const score = Math.floor(Math.random() * 100) + 1
       scores[drawing.player_id] = score
+      console.log(`Player ${drawing.player_id} scored: ${score}`)
 
       // 점수 저장
       db.prepare(`
@@ -179,12 +186,15 @@ export class GameManager {
       `).run(score, drawing.player_id)
     })
 
-    // 방 상태 업데이트
+    // 방 상태를 'scoring'에서 'finished'로 변경
     db.prepare(`
       UPDATE rooms 
-      SET status = 'scoring' 
+      SET status = 'finished' 
       WHERE id = ?
-    `).run('scoring', roomId)
+    `).run('finished', roomId)
+    
+    console.log(`Room ${roomId} status updated to 'finished'`)
+    console.log(`Final scores:`, scores)
 
     return scores
   }
@@ -201,10 +211,15 @@ export class GameManager {
   }
 
   static nextRound(roomId: string): string | null {
+    console.log(`Starting next round for room ${roomId}`)
     const room = this.getRoom(roomId)
-    if (!room) return null
+    if (!room) {
+      console.error(`Room ${roomId} not found for next round`)
+      return null
+    }
 
     const keyword = keywords[Math.floor(Math.random() * keywords.length)]
+    console.log(`Next round keyword: ${keyword}`)
 
     const stmt = db.prepare(`
       UPDATE rooms 
@@ -215,6 +230,7 @@ export class GameManager {
       WHERE id = ?
     `)
     stmt.run(keyword, roomId)
+    console.log(`Room ${roomId} updated for next round`)
 
     // 플레이어 제출 상태 초기화
     const resetStmt = db.prepare(`
@@ -223,6 +239,10 @@ export class GameManager {
       WHERE room_id = ?
     `)
     resetStmt.run(roomId)
+    console.log(`All players in room ${roomId} reset for next round`)
+
+    // 게임 이벤트 추가
+    this.addGameEvent(roomId, "next_round_started", { keyword, roundNumber: room.round_number + 1 })
 
     return keyword
   }
@@ -231,6 +251,97 @@ export class GameManager {
     db.prepare("DELETE FROM drawings WHERE room_id = ?").run(roomId)
     db.prepare("DELETE FROM players WHERE room_id = ?").run(roomId)
     db.prepare("DELETE FROM rooms WHERE id = ?").run(roomId)
+  }
+
+  static removePlayer(roomId: string, playerId: string): void {
+    console.log(`Removing player ${playerId} from room ${roomId}`)
+    db.prepare("DELETE FROM players WHERE id = ? AND room_id = ?").run(playerId, roomId)
+  }
+
+  static transferHost(roomId: string, newHostId: string): void {
+    console.log(`Transferring host to player ${newHostId} in room ${roomId}`)
+    
+    // 현재 방장 정보 확인
+    const currentHost = db.prepare(`
+      SELECT id, nickname FROM players 
+      WHERE room_id = ? AND is_host = TRUE
+    `).get(roomId) as { id: string, nickname: string } | null
+    
+    if (currentHost) {
+      console.log(`Current host: ${currentHost.id} (${currentHost.nickname})`)
+    }
+    
+    // 새로운 방장 정보 확인
+    const newHost = db.prepare(`
+      SELECT id, nickname FROM players 
+      WHERE id = ? AND room_id = ?
+    `).get(newHostId, roomId) as { id: string, nickname: string } | null
+    
+    if (!newHost) {
+      console.error(`New host ${newHostId} not found in room ${roomId}`)
+      return
+    }
+    
+    console.log(`New host: ${newHost.id} (${newHost.nickname})`)
+    
+    try {
+      // 기존 방장을 일반 플레이어로 변경
+      const updateOldHost = db.prepare(`
+        UPDATE players 
+        SET is_host = FALSE 
+        WHERE room_id = ? AND is_host = TRUE
+      `)
+      const oldHostResult = updateOldHost.run(roomId)
+      console.log(`Old host update result:`, oldHostResult)
+      
+      // 새로운 방장 설정
+      const updateNewHost = db.prepare(`
+        UPDATE players 
+        SET is_host = TRUE 
+        WHERE id = ? AND room_id = ?
+      `)
+      const newHostResult = updateNewHost.run(newHostId, roomId)
+      console.log(`New host update result:`, newHostResult)
+      
+      // 방의 host_id 업데이트
+      const updateRoom = db.prepare(`
+        UPDATE rooms 
+        SET host_id = ? 
+        WHERE id = ?
+      `)
+      const roomResult = updateRoom.run(newHostId, roomId)
+      console.log(`Room update result:`, roomResult)
+      
+      console.log(`Host successfully transferred from ${currentHost?.id} to ${newHostId}`)
+      
+      // 변경 사항 확인
+      const verifyHost = db.prepare(`
+        SELECT id, nickname, is_host FROM players 
+        WHERE room_id = ? AND is_host = TRUE
+      `).get(roomId) as { id: string, nickname: string, is_host: boolean } | null
+      
+      console.log(`Verification - Current host:`, verifyHost)
+      
+      const verifyRoom = db.prepare(`
+        SELECT host_id FROM rooms WHERE id = ?
+      `).get(roomId) as { host_id: string } | null
+      
+      console.log(`Verification - Room host_id:`, verifyRoom)
+      
+    } catch (error) {
+      console.error(`Error transferring host:`, error)
+      throw error
+    }
+  }
+
+  static findNewHost(roomId: string): string | null {
+    const players = this.getRoomPlayers(roomId)
+    if (players.length === 0) return null
+    
+    // 가장 먼저 입장한 플레이어를 새로운 방장으로 선택
+    const newHost = players[0]
+    console.log(`New host selected: ${newHost.id} (${newHost.nickname})`)
+    return newHost.id
   }
 
   static addGameEvent(roomId: string, eventType: string, eventData?: any): void {

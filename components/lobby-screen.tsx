@@ -3,13 +3,15 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Users, Crown, Copy, Check } from "lucide-react"
+import { Users, Crown, Copy, Check, Home } from "lucide-react"
 import { useGameStore } from "@/store/game-store"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 
 export default function LobbyScreen() {
-  const { roomId, players, isHost, startGame } = useGameStore()
+  const { roomId, players, isHost, startGame, leaveRoom } = useGameStore()
   const [copied, setCopied] = useState(false)
+  const router = useRouter()
 
   const copyRoomId = async () => {
     await navigator.clipboard.writeText(roomId)
@@ -19,6 +21,11 @@ export default function LobbyScreen() {
 
   const handleStartGame = async () => {
     await startGame()
+  }
+
+  const handleLeaveRoom = async () => {
+    await leaveRoom()
+    router.push("/")
   }
 
   return (
@@ -56,7 +63,7 @@ export default function LobbyScreen() {
                       </div>
                       <span className="font-medium">{player.nickname}</span>
                     </div>
-                    {player.isHost && (
+                    {player.is_host && (
                       <Badge variant="default" className="bg-yellow-500">
                         <Crown className="h-3 w-3 mr-1" />
                         방장
@@ -97,6 +104,13 @@ export default function LobbyScreen() {
                   <p className="text-gray-600">방장이 게임을 시작할 때까지 기다려주세요...</p>
                 </div>
               )}
+
+              <div className="pt-4 border-t">
+                <Button onClick={handleLeaveRoom} variant="outline" className="w-full" size="lg">
+                  <Home className="h-4 w-4 mr-2" />
+                  방 나가기
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

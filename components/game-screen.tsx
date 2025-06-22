@@ -1,29 +1,39 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock, Palette, RotateCcw, Send } from "lucide-react"
+import { Clock, Palette, RotateCcw, Send, Home } from "lucide-react"
 import { useGameStore } from "@/store/game-store"
 import Canvas from "@/components/canvas"
 import ColorPalette from "@/components/color-palette"
+import { useRouter } from "next/navigation"
 
 export default function GameScreen() {
-  const { keyword, players, submitDrawing, timeLeft } = useGameStore()
+  const { keyword, players, submitDrawing, timeLeft, currentPhase, leaveRoom } = useGameStore()
   const [canvasData, setCanvasData] = useState<string>("")
   const [currentColor, setCurrentColor] = useState("#000000")
   const [brushSize, setBrushSize] = useState(5)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const router = useRouter()
+
+  // drawing 단계로 변경될 때 제출 상태 초기화
+  useEffect(() => {
+    if (currentPhase === "drawing") {
+      setIsSubmitted(false)
+      setCanvasData("")
+    }
+  }, [currentPhase])
 
   const handleSubmit = async () => {
     console.log("Submit button clicked, canvasData length:", canvasData?.length || 0)
-    if (canvasData && !isSubmitted) {
+    if (!isSubmitted) {
       console.log("Submitting drawing...")
       setIsSubmitted(true)
       await submitDrawing(canvasData)
     } else {
-      console.log("Cannot submit:", { hasCanvasData: !!canvasData, isSubmitted })
+      console.log("Already submitted")
     }
   }
 
@@ -34,6 +44,11 @@ export default function GameScreen() {
       (canvas as any).clearCanvas()
       setCanvasData("")
     }
+  }
+
+  const handleLeaveRoom = async () => {
+    await leaveRoom()
+    router.push("/")
   }
 
   return (
@@ -53,11 +68,23 @@ export default function GameScreen() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-red-500" />
-                  <span className={`text-2xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-800"}`}>
-                    {timeLeft}초
-                  </span>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-red-500" />
+                    <span className={`text-2xl font-bold ${timeLeft <= 10 ? "text-red-500" : "text-gray-800"}`}>
+                      {timeLeft}초
+                    </span>
+                  </div>
+                  
+                  <Button 
+                    onClick={handleLeaveRoom} 
+                    variant="outline" 
+                    size="sm"
+                    className="text-red-600 border-red-600 hover:bg-red-50"
+                  >
+                    <Home className="h-4 w-4 mr-1" />
+                    방 나가기
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -119,7 +146,7 @@ export default function GameScreen() {
                     </Button>
                     <Button
                       onClick={handleSubmit}
-                      disabled={!canvasData || isSubmitted}
+                      disabled={isSubmitted}
                       className="bg-green-600 hover:bg-green-700"
                       size="sm"
                     >

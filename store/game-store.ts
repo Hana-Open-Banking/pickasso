@@ -46,6 +46,7 @@ export interface GameState {
   submitDrawing: (canvasData: string) => Promise<void>
   nextRound: () => Promise<void>
   resetGame: () => void
+  leaveRoom: () => Promise<void>
 }
 
 export const useGameStore = create<GameState>((set, get) => {
@@ -69,7 +70,18 @@ export const useGameStore = create<GameState>((set, get) => {
     setPlayerId: (playerId) => set({ playerId }),
     setIsHost: (isHost) => set({ isHost }),
     setPhase: (currentPhase) => set({ currentPhase }),
-    setPlayers: (players) => set({ players }),
+    setPlayers: (players) => {
+      const state = get()
+      // 현재 플레이어의 방장 상태 업데이트
+      const currentPlayer = players.find(p => p.id === state.playerId)
+      const isHost = currentPlayer?.is_host || false
+      
+      console.log("Setting players:", players)
+      console.log("Current player:", currentPlayer)
+      console.log("Is host:", isHost)
+      
+      set({ players, isHost })
+    },
     setKeyword: (keyword) => set({ keyword }),
     setTimeLeft: (timeLeft) => set({ timeLeft }),
     setCanvasData: (canvasData) => set({ canvasData }),
@@ -182,9 +194,8 @@ export const useGameStore = create<GameState>((set, get) => {
         currentPhase: state.currentPhase
       })
 
-      if (!canvasData || !state.playerId || !state.roomId) {
+      if (!state.playerId || !state.roomId) {
         console.error("Missing required data for submission:", {
-          hasCanvasData: !!canvasData,
           hasPlayerId: !!state.playerId,
           hasRoomId: !!state.roomId
         })
@@ -200,7 +211,7 @@ export const useGameStore = create<GameState>((set, get) => {
           body: JSON.stringify({
             playerId: state.playerId,
             roomId: state.roomId,
-            canvasData,
+            canvasData: canvasData || "",
           }),
         })
 
@@ -208,11 +219,15 @@ export const useGameStore = create<GameState>((set, get) => {
         console.log("Submit response:", data)
 
         if (data.success && data.allSubmitted) {
+          console.log("All players submitted, updating to result phase")
           set({
             scores: data.scores,
             winner: data.winner,
             currentPhase: "result",
           })
+        } else if (data.success) {
+          console.log("Drawing submitted, waiting for other players")
+          // 다른 플레이어들이 제출할 때까지 대기
         }
       } catch (error) {
         console.error("Error submitting drawing:", error)
@@ -233,6 +248,7 @@ export const useGameStore = create<GameState>((set, get) => {
         })
 
         const data = await response.json()
+        console.log("Next round response:", data)
 
         if (data.success) {
           set({
@@ -243,6 +259,7 @@ export const useGameStore = create<GameState>((set, get) => {
             scores: {},
             winner: "",
           })
+          console.log("Next round started successfully")
         }
       } catch (error) {
         console.error("Error starting next round:", error)
@@ -263,6 +280,43 @@ export const useGameStore = create<GameState>((set, get) => {
         scores: {},
         winner: "",
       })
+    },
+
+    leaveRoom: async () => {
+      const state = get()
+
+      try {
+        const response = await fetch("/api/rooms/leave", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId: state.roomId,
+            playerId: state.playerId,
+          }),
+        })
+
+        const data = await response.json()
+
+        if (data.success) {
+          set({
+            nickname: "",
+            roomId: "",
+            playerId: "",
+            isHost: false,
+            currentPhase: "lobby",
+            players: [],
+            keyword: "",
+            timeLeft: 60,
+            canvasData: "",
+            scores: {},
+            winner: "",
+          })
+        } else {
+          console.error("Failed to leave room:", data.error)
+        }
+      } catch (error) {
+        console.error("Error leaving room:", error)
+      }
     },
   }
 })

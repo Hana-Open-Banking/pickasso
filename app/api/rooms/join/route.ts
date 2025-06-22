@@ -46,6 +46,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 방이 삭제되었는지 확인 (플레이어가 없는 경우)
+    const currentPlayers = GameManager.getRoomPlayers(roomId)
+    if (currentPlayers.length === 0) {
+      console.log(`Room ${roomId} has no players, deleting room`)
+      GameManager.deleteRoom(roomId)
+      return NextResponse.json(
+        { error: "Room has been deleted. Please create a new room." },
+        { status: 400 }
+      )
+    }
+
+    // 방장이 없는 경우 새로운 방장 선택
+    const hasHost = currentPlayers.some(p => p.is_host)
+    if (!hasHost && currentPlayers.length > 0) {
+      console.log(`No host in room ${roomId}, selecting new host`)
+      const newHostId = GameManager.findNewHost(roomId)
+      if (newHostId) {
+        GameManager.transferHost(roomId, newHostId)
+        const newHost = currentPlayers.find(p => p.id === newHostId)
+        console.log(`New host selected: ${newHostId} (${newHost?.nickname})`)
+        
+        // 새로운 방장에게 알림 이벤트 추가
+        GameManager.addGameEvent(roomId, "host_transferred", { 
+          oldHostId: "system", 
+          newHostId, 
+          newHostNickname: newHost?.nickname 
+        })
+      }
+    }
+
     GameManager.addGameEvent(roomId, "player_joined", { playerId, nickname })
 
     const room = GameManager.getRoom(roomId)

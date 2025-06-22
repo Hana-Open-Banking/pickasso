@@ -8,7 +8,7 @@ import { useGameStore } from "@/store/game-store"
 import { useRouter } from "next/navigation"
 
 export default function ResultScreen() {
-  const { players, scores, winner, isHost, nextRound, resetGame } = useGameStore()
+  const { players, scores, winner, isHost, nextRound, resetGame, leaveRoom } = useGameStore()
   const router = useRouter()
 
   const sortedPlayers = [...players].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0))
@@ -57,8 +57,8 @@ export default function ResultScreen() {
     await nextRound()
   }
 
-  const handleGoHome = () => {
-    resetGame()
+  const handleGoHome = async () => {
+    await leaveRoom()
     router.push("/")
   }
 

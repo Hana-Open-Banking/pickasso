@@ -167,6 +167,18 @@ class MemoryDatabase {
             }
             console.log(`DB: Room ${roomId} updated:`, room)
           }
+        } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =')) {
+          // 플레이어 제출 상태 초기화 (room_id로 업데이트)
+          const roomId = params[0]
+          const hasSubmitted = params[1]
+          console.log(`DB: Resetting all players in room ${roomId} has_submitted to: ${hasSubmitted}`)
+          
+          for (const player of players.values()) {
+            if (player.room_id === roomId) {
+              player.has_submitted = hasSubmitted
+              console.log(`DB: Updated player ${player.id} has_submitted to ${hasSubmitted}`)
+            }
+          }
         } else if (query.includes('UPDATE players')) {
           const playerId = params[0]
           const player = players.get(playerId)
@@ -179,17 +191,31 @@ class MemoryDatabase {
             if (query.includes('score = score +')) {
               player.score += params[0]
             }
+            if (query.includes('is_host = TRUE')) {
+              player.is_host = true
+              console.log(`DB: Player ${playerId} became host`)
+            }
+            if (query.includes('is_host = FALSE')) {
+              player.is_host = false
+              console.log(`DB: Player ${playerId} is no longer host`)
+            }
           }
-        } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =')) {
-          // 플레이어 제출 상태 초기화 (room_id로 업데이트)
+        } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =') && query.includes('is_host = FALSE')) {
+          // 모든 플레이어의 방장 권한 해제
           const roomId = params[0]
-          const hasSubmitted = params[1]
-          console.log(`DB: Resetting all players in room ${roomId} has_submitted to: ${hasSubmitted}`)
-          
+          console.log(`DB: Removing host status from all players in room ${roomId}`)
           for (const player of players.values()) {
             if (player.room_id === roomId) {
-              player.has_submitted = hasSubmitted
-              console.log(`DB: Updated player ${player.id} has_submitted to ${hasSubmitted}`)
+              player.is_host = false
+            }
+          }
+        } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =') && query.includes('is_host = TRUE')) {
+          // 모든 플레이어의 방장 권한 해제
+          const roomId = params[0]
+          console.log(`DB: Removing host status from all players in room ${roomId}`)
+          for (const player of players.values()) {
+            if (player.room_id === roomId) {
+              player.is_host = false
             }
           }
         } else if (query.includes('UPDATE drawings')) {
@@ -218,6 +244,11 @@ class MemoryDatabase {
               gameEvents.delete(eventId)
             }
           }
+        } else if (query.includes('DELETE FROM players')) {
+          const playerId = params[0]
+          const roomId = params[1]
+          console.log(`DB: Deleting player ${playerId} from room ${roomId}`)
+          players.delete(playerId)
         }
       },
       get: (...params: any[]) => {
