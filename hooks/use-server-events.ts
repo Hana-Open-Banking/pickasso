@@ -185,6 +185,33 @@ export function useServerEvents(roomId: string) {
                 console.log("Updating players list after host transfer:", data.players)
                 setPlayers(data.players)
               }
+            } else if (latestEvent.event_type === "host_assigned") {
+              // 자동으로 방장이 설정된 경우
+              const eventData = JSON.parse(latestEvent.event_data || "{}")
+              console.log("Host assigned event data:", eventData)
+              
+              const currentState = useGameStore.getState()
+              console.log("Current player ID:", currentState.playerId)
+              console.log("Assigned host ID:", eventData.newHostId)
+              
+              if (currentState.playerId === eventData.newHostId) {
+                // 내가 자동으로 방장이 된 경우
+                console.log("I am the auto-assigned host!")
+                alert(`🎉 방장이 없어서 자동으로 방장이 되었습니다!`)
+                currentState.setIsHost(true)
+              } else {
+                // 다른 사람이 자동으로 방장이 된 경우
+                console.log(`Auto-assigned host is: ${eventData.newHostNickname || eventData.newHostId}`)
+                if (eventData.newHostNickname) {
+                  alert(`${eventData.newHostNickname}님이 자동으로 방장이 되었습니다.`)
+                }
+              }
+              
+              // 플레이어 목록 업데이트
+              if (data.players) {
+                console.log("Updating players list after host assignment:", data.players)
+                setPlayers(data.players)
+              }
             } else if (latestEvent.event_type === "player_left") {
               // 일반 참여자가 나간 경우
               const eventData = JSON.parse(latestEvent.event_data || "{}")

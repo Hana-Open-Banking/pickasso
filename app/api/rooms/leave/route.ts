@@ -22,14 +22,12 @@ export async function POST(request: NextRequest) {
     const isHost = leavingPlayer.is_host
     const remainingPlayers = players.filter(p => p.id !== playerId)
 
-    // 플레이어 제거
-    GameManager.removePlayer(roomId, playerId)
-
     if (isHost) {
       // 방장이 나가는 경우
       if (remainingPlayers.length === 0) {
         // 남은 플레이어가 없으면 방 삭제
         console.log(`Host ${playerId} left room ${roomId}, no players remaining, deleting room`)
+        GameManager.removePlayer(roomId, playerId)
         GameManager.deleteRoom(roomId)
         GameManager.addGameEvent(roomId, "host_left", { 
           playerId, 
@@ -37,23 +35,34 @@ export async function POST(request: NextRequest) {
           leavingPlayerNickname: leavingPlayer.nickname 
         })
       } else {
-        // 남은 플레이어가 있으면 방장 위임
+        // 남은 플레이어가 있으면 방장 위임 (플레이어 제거 전에 새로운 방장 찾기)
         const newHostId = GameManager.findNewHost(roomId)
         if (newHostId) {
+          console.log(`Host ${playerId} left room ${roomId}, transferring to ${newHostId}`)
+          
+          // 먼저 방장 위임
           GameManager.transferHost(roomId, newHostId)
+          
+          // 그 다음 플레이어 제거
+          GameManager.removePlayer(roomId, playerId)
+          
           const newHost = remainingPlayers.find(p => p.id === newHostId)
-          console.log(`Host ${playerId} left room ${roomId}, transferred to ${newHostId} (${newHost?.nickname})`)
+          console.log(`Host successfully transferred to ${newHostId} (${newHost?.nickname})`)
           GameManager.addGameEvent(roomId, "host_transferred", { 
             oldHostId: playerId, 
             oldHostNickname: leavingPlayer.nickname,
             newHostId, 
             newHostNickname: newHost?.nickname 
           })
+        } else {
+          console.error(`Failed to find new host for room ${roomId}`)
+          GameManager.removePlayer(roomId, playerId)
         }
       }
     } else {
       // 일반 참여자가 나가는 경우
       console.log(`Player ${playerId} left room ${roomId}`)
+      GameManager.removePlayer(roomId, playerId)
       GameManager.addGameEvent(roomId, "player_left", { 
         playerId,
         playerNickname: leavingPlayer.nickname 

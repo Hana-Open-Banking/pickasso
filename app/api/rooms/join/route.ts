@@ -12,86 +12,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const success = GameManager.joinRoom(roomId, playerId, nickname)
-
-    if (!success) {
-      const room = GameManager.getRoom(roomId)
-      if (!room) {
-        return NextResponse.json(
-          { error: "Room not found. Please check the room code." },
-          { status: 400 }
-        )
-      }
-      
-      if (room.status !== "waiting") {
-        return NextResponse.json(
-          { error: "Room is not accepting new players. Game may have already started." },
-          { status: 400 }
-        )
-      }
-
-      // 닉네임 중복 체크
-      const players = GameManager.getRoomPlayers(roomId)
-      const existingPlayer = players.find(p => p.nickname === nickname)
-      if (existingPlayer) {
-        return NextResponse.json(
-          { error: "Nickname is already taken in this room. Please choose a different nickname." },
-          { status: 400 }
-        )
-      }
-
-      return NextResponse.json(
-        { error: "Failed to join room. Please try again." },
-        { status: 400 }
-      )
-    }
-
-    // 방이 삭제되었는지 확인 (플레이어가 없는 경우)
-    const currentPlayers = GameManager.getRoomPlayers(roomId)
-    if (currentPlayers.length === 0) {
-      console.log(`Room ${roomId} has no players, deleting room`)
-      GameManager.deleteRoom(roomId)
-      return NextResponse.json(
-        { error: "Room has been deleted. Please create a new room." },
-        { status: 400 }
-      )
-    }
-
-    // 방장이 없는 경우 새로운 방장 선택
-    const hasHost = currentPlayers.some(p => p.is_host)
-    if (!hasHost && currentPlayers.length > 0) {
-      console.log(`No host in room ${roomId}, selecting new host`)
-      const newHostId = GameManager.findNewHost(roomId)
-      if (newHostId) {
-        GameManager.transferHost(roomId, newHostId)
-        const newHost = currentPlayers.find(p => p.id === newHostId)
-        console.log(`New host selected: ${newHostId} (${newHost?.nickname})`)
-        
-        // 새로운 방장에게 알림 이벤트 추가
-        GameManager.addGameEvent(roomId, "host_transferred", { 
-          oldHostId: "system", 
-          newHostId, 
-          newHostNickname: newHost?.nickname 
-        })
-      }
-    }
-
-    GameManager.addGameEvent(roomId, "player_joined", { playerId, nickname })
-
+    // 방 존재 확인
     const room = GameManager.getRoom(roomId)
+    if (!room) {
+      return NextResponse.json({ error: "Room not found" }, { status: 404 })
+    }
+
+    // 방 입장 시도
+    const joinSuccess = GameManager.joinRoom(roomId, playerId, nickname)
+    
+    if (!joinSuccess) {
+      return NextResponse.json({ error: "Failed to join room" }, { status: 400 })
+    }
+
+    // 방장이 없는 경우 자동으로 방장 설정
     const players = GameManager.getRoomPlayers(roomId)
+    const hasHost = players.some(p => p.is_host)
+    
+    if (!hasHost && players.length > 0) {
+      console.log(`No host found in room ${roomId}, setting first player as host`)
+      const firstPlayer = players[0]
+      GameManager.transferHost(roomId, firstPlayer.id)
+      
+      // 방장 설정 이벤트 추가
+      GameManager.addGameEvent(roomId, "host_assigned", {
+        newHostId: firstPlayer.id,
+        newHostNickname: firstPlayer.nickname,
+        reason: "auto_assigned"
+      })
+      
+      // 업데이트된 플레이어 목록 가져오기
+      const updatedPlayers = GameManager.getRoomPlayers(roomId)
+      const isHost = firstPlayer.id === playerId
+      
+      return NextResponse.json({
+        success: true,
+        isHost,
+        players: updatedPlayers
+      })
+    }
 
-    console.log(`Successfully joined room ${roomId}. Total players: ${players.length}`)
-
-    // 현재 사용자가 방장인지 확인
+    // 현재 플레이어가 방장인지 확인
     const currentPlayer = players.find(p => p.id === playerId)
     const isHost = currentPlayer?.is_host || false
 
-    return NextResponse.json({ 
-      success: true, 
-      room, 
-      players,
-      isHost 
+    return NextResponse.json({
+      success: true,
+      isHost,
+      players
     })
   } catch (error) {
     console.error("Error joining room:", error)
