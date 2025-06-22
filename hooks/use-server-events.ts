@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useGameStore } from "@/store/game-store"
 
 interface ServerEvent {
@@ -13,40 +13,45 @@ interface ServerEvent {
 export function useServerEvents(roomId: string) {
   const [isConnected, setIsConnected] = useState(false)
   const { setPlayers, setPhase, setKeyword, setScores, setWinner, setTimeLeft } = useGameStore()
-
-  // 게임 타이머 관리
-  const [gameTimer, setGameTimer] = useState<NodeJS.Timeout | null>(null)
+  
+  // 타이머 관리를 위한 ref 사용
+  const gameTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const lastPhaseRef = useRef<string>("")
 
   const startGameTimer = () => {
     // 기존 타이머가 있다면 정리
-    if (gameTimer) {
-      clearInterval(gameTimer)
+    if (gameTimerRef.current) {
+      clearInterval(gameTimerRef.current)
+      gameTimerRef.current = null
     }
 
+    console.log("Starting game timer...")
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev > 0) {
-          return prev - 1
-        } else {
-          clearInterval(timer)
-          setGameTimer(null)
-          // 시간 종료 시 자동 제출
-          const currentState = useGameStore.getState()
-          if (currentState.canvasData && currentState.currentPhase === "drawing") {
-            currentState.submitDrawing(currentState.canvasData)
-          }
-          return 0
+      const currentState = useGameStore.getState()
+      const currentTime = currentState.timeLeft
+      console.log(`Timer tick: ${currentTime} -> ${currentTime - 1}`)
+      
+      if (currentTime > 0) {
+        setTimeLeft(currentTime - 1)
+      } else {
+        clearInterval(timer)
+        gameTimerRef.current = null
+        // 시간 종료 시 자동 제출
+        if (currentState.canvasData && currentState.currentPhase === "drawing") {
+          console.log("Time's up! Auto-submitting drawing...")
+          currentState.submitDrawing(currentState.canvasData)
         }
-      })
+      }
     }, 1000)
 
-    setGameTimer(timer)
+    gameTimerRef.current = timer
   }
 
   const clearGameTimer = () => {
-    if (gameTimer) {
-      clearInterval(gameTimer)
-      setGameTimer(null)
+    if (gameTimerRef.current) {
+      clearInterval(gameTimerRef.current)
+      gameTimerRef.current = null
+      console.log("Game timer cleared")
     }
   }
 
@@ -74,28 +79,29 @@ export function useServerEvents(roomId: string) {
           // 게임 상태 업데이트
           if (data.room) {
             console.log("Room status:", data.room.status)
-            switch (data.room.status) {
-              case "waiting":
-                setPhase("lobby")
-                clearGameTimer()
-                break
-              case "playing":
-                setPhase("drawing")
+            const currentPhase = data.room.status === "waiting" ? "lobby" : 
+                               data.room.status === "playing" ? "drawing" :
+                               data.room.status === "scoring" ? "scoring" : "result"
+            
+            // 상태가 변경되었을 때만 처리
+            if (lastPhaseRef.current !== currentPhase) {
+              console.log(`Phase changed: ${lastPhaseRef.current} -> ${currentPhase}`)
+              lastPhaseRef.current = currentPhase
+              setPhase(currentPhase)
+              
+              if (currentPhase === "drawing") {
                 if (data.room.current_keyword) {
                   setKeyword(data.room.current_keyword)
                 }
                 if (data.room.time_left) {
                   setTimeLeft(data.room.time_left)
                 }
-                // 방 상태가 playing으로 변경되었을 때 타이머 시작
-                if (!gameTimer) {
-                  startGameTimer()
-                }
-                break
-              case "scoring":
-                setPhase("scoring")
+                // drawing 단계로 변경되었을 때만 타이머 시작
+                startGameTimer()
+              } else {
+                // 다른 단계로 변경되었을 때 타이머 정리
                 clearGameTimer()
-                break
+              }
             }
           }
 

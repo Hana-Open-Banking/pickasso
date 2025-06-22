@@ -133,6 +133,7 @@ class MemoryDatabase {
           const roomId = params[params.length - 1]
           const room = rooms.get(roomId)
           if (room) {
+            console.log(`DB: Updating room ${roomId} with params:`, params)
             if (query.includes('status =') && query.includes('current_keyword =') && query.includes('round_number =')) {
               // nextRound에서 사용하는 쿼리
               // 쿼리: SET status = 'playing', current_keyword = ?, time_left = 60, round_number = round_number + 1 WHERE id = ?
@@ -148,8 +149,14 @@ class MemoryDatabase {
               room.status = 'playing'  // 하드코딩된 값
               room.current_keyword = params[0]  // keyword
               room.time_left = 60  // 하드코딩된 값
+            } else if (query.includes('status =') && query.includes('scoring')) {
+              // scoring 상태로 변경
+              room.status = 'scoring'
             } else if (query.includes('status =')) {
-              room.status = params[0]
+              // 단순 status 업데이트
+              const status = params[0]
+              console.log(`DB: Setting room status to: ${status}`)
+              room.status = status
             } else if (query.includes('current_keyword =')) {
               room.current_keyword = params[0]
               room.time_left = params[1]
@@ -158,16 +165,31 @@ class MemoryDatabase {
             } else if (query.includes('round_number =')) {
               room.round_number = params[0]
             }
+            console.log(`DB: Room ${roomId} updated:`, room)
           }
         } else if (query.includes('UPDATE players')) {
           const playerId = params[0]
           const player = players.get(playerId)
           if (player) {
             if (query.includes('has_submitted =')) {
-              player.has_submitted = params[1]
+              const hasSubmitted = params[1]
+              console.log(`DB: Updating player ${playerId} has_submitted: ${hasSubmitted}`)
+              player.has_submitted = hasSubmitted
             }
             if (query.includes('score = score +')) {
               player.score += params[0]
+            }
+          }
+        } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =')) {
+          // 플레이어 제출 상태 초기화 (room_id로 업데이트)
+          const roomId = params[0]
+          const hasSubmitted = params[1]
+          console.log(`DB: Resetting all players in room ${roomId} has_submitted to: ${hasSubmitted}`)
+          
+          for (const player of players.values()) {
+            if (player.room_id === roomId) {
+              player.has_submitted = hasSubmitted
+              console.log(`DB: Updated player ${player.id} has_submitted to ${hasSubmitted}`)
             }
           }
         } else if (query.includes('UPDATE drawings')) {

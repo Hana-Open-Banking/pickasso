@@ -17,14 +17,23 @@ export default function GameScreen() {
   const [isSubmitted, setIsSubmitted] = useState(false)
 
   const handleSubmit = async () => {
+    console.log("Submit button clicked, canvasData length:", canvasData?.length || 0)
     if (canvasData && !isSubmitted) {
-      await submitDrawing(canvasData)
+      console.log("Submitting drawing...")
       setIsSubmitted(true)
+      await submitDrawing(canvasData)
+    } else {
+      console.log("Cannot submit:", { hasCanvasData: !!canvasData, isSubmitted })
     }
   }
 
   const handleClearCanvas = () => {
-    // Canvas 컴포넌트에서 처리
+    // Canvas 컴포넌트에서 전역 함수로 접근
+    const canvas = document.querySelector('canvas')
+    if (canvas && (canvas as any).clearCanvas) {
+      (canvas as any).clearCanvas()
+      setCanvasData("")
+    }
   }
 
   return (
@@ -68,7 +77,7 @@ export default function GameScreen() {
                     <div
                       key={player.id}
                       className={`p-2 rounded-lg text-sm ${
-                        player.hasSubmitted ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
+                        player.has_submitted ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -86,8 +95,8 @@ export default function GameScreen() {
                           <span className="text-xs bg-blue-100 text-blue-600 px-1 rounded">AI</span>
                         )}
                       </div>
-                      {player.hasSubmitted && <p className="text-xs mt-1">제출 완료</p>}
-                      {player.id.startsWith("bot") && !player.hasSubmitted && (
+                      {player.has_submitted && <p className="text-xs mt-1">제출 완료</p>}
+                      {player.id.startsWith("bot") && !player.has_submitted && (
                         <p className="text-xs mt-1">그리는 중...</p>
                       )}
                     </div>

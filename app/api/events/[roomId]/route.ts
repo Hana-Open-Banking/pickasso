@@ -28,8 +28,8 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
           console.log(`SSE: Room ${roomId} events:`, events)
 
           // 현재 방 상태 가져오기
-          const room = db.prepare("SELECT * FROM rooms WHERE id = ?").get(roomId)
-          const players = db.prepare("SELECT * FROM players WHERE room_id = ?").all(roomId)
+          const room = db.prepare("SELECT * FROM rooms WHERE id = ?").get(roomId) as any
+          const players = db.prepare("SELECT * FROM players WHERE room_id = ?").all(roomId) as any[]
 
           console.log(`SSE: Room ${roomId} details:`, {
             id: room?.id,
@@ -38,6 +38,13 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
             time_left: room?.time_left,
             round_number: room?.round_number
           })
+
+          console.log(`SSE: Players in room ${roomId}:`, players.map(p => ({
+            id: p.id,
+            nickname: p.nickname,
+            has_submitted: p.has_submitted,
+            is_host: p.is_host
+          })))
 
           const data = {
             type: "game_state",
