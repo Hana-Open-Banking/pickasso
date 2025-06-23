@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Palette, Users, Plus } from "lucide-react"
+import { Users, Plus } from "lucide-react"
 import { useGameStore } from "@/store/game-store"
 import { useToast } from "@/hooks/use-toast"
 
@@ -20,10 +21,6 @@ export default function HomePage() {
   const [roomNumber, setRoomNumber] = useState("")
   const [nicknameInput, setNicknameInput] = useState("")
   const [isJoining, setIsJoining] = useState(false)
-
-  const generateRoomId = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString()
-  }
 
   const handleJoinRoom = async () => {
     if (!nicknameInput.trim() || !roomNumber.trim()) return
@@ -68,47 +65,55 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 via-pink-100 to-yellow-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-white rounded-full p-4 shadow-lg">
-              <Palette className="h-12 w-12 text-purple-600" />
-            </div>
+          <div className="flex justify-center mb-6 relative h-40">
+            <Image
+              src="/pickasso-logo.png"
+              alt="Pickasso Logo"
+              width={250}
+              height={250}
+              className="drop-shadow-lg"
+            />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">그림 맞히기</h1>
-          <p className="text-white/80">친구들과 함께 그림을 그리고 AI가 채점해요!</p>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2 font-[Pretendard]">PICKASSO</h1>
+          <p className="text-gray-600 font-medium">친구들과 함께 그림을 그리고 AI가 채점해요! 🎨</p>
         </div>
 
         <div className="space-y-4">
-          <Card className="bg-white/95 backdrop-blur-sm">
-            <CardHeader className="text-center">
-              <CardTitle className="flex items-center justify-center gap-2">
+          <Card className="border-2 border-blue-200 shadow-lg hover:shadow-xl transition-shadow duration-200">
+            <CardHeader className="text-center pb-4">
+              <CardTitle className="flex items-center justify-center gap-2 text-blue-600">
                 <Users className="h-5 w-5" />방 참여하기
               </CardTitle>
-              <CardDescription>6자리 방 번호를 입력해서 게임에 참여하세요</CardDescription>
+              <CardDescription className="text-gray-600">6자리 방 번호를 입력해서 게임에 참여하세요</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button onClick={() => setShowJoinModal(true)} className="w-full bg-blue-600 hover:bg-blue-700" size="lg">
+              <Button 
+                onClick={() => setShowJoinModal(true)} 
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-xl shadow-md hover:shadow-lg transition-all duration-200" 
+                size="lg"
+              >
                 방 참여하기
               </Button>
             </CardContent>
           </Card>
 
-          <Card className="bg-white/95 backdrop-blur-sm">
-            <CardHeader className="text-center">
-              <CardTitle className="flex items-center justify-center gap-2">
-                <Plus className="h-5 w-5" />방 생성하기
+          <Card className="border-2 border-pink-200 shadow-lg hover:shadow-xl transition-shadow duration-200">
+            <CardHeader className="text-center pb-4">
+              <CardTitle className="flex items-center justify-center gap-2 text-pink-600">
+                <Plus className="h-5 w-5" />방 만들기
               </CardTitle>
-              <CardDescription>새로운 게임방을 만들고 친구들을 초대하세요</CardDescription>
+              <CardDescription className="text-gray-600">새로운 게임방을 만들고 친구들을 초대하세요</CardDescription>
             </CardHeader>
             <CardContent>
               <Button
                 onClick={() => setShowCreateModal(true)}
-                className="w-full bg-green-600 hover:bg-green-700"
+                className="w-full bg-pink-500 hover:bg-pink-600 text-white font-medium rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
                 size="lg"
               >
-                방 생성하기
+                방 만들기
               </Button>
             </CardContent>
           </Card>
@@ -117,36 +122,38 @@ export default function HomePage() {
 
       {/* 방 참여 모달 */}
       <Dialog open={showJoinModal} onOpenChange={setShowJoinModal}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[425px] border-2 border-blue-200">
           <DialogHeader>
-            <DialogTitle>방 참여하기</DialogTitle>
-            <DialogDescription>닉네임과 방 번호를 입력해주세요</DialogDescription>
+            <DialogTitle className="text-blue-600 text-xl">방 참여하기</DialogTitle>
+            <DialogDescription className="text-gray-600">닉네임과 방 번호를 입력해주세요</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="nickname">닉네임</Label>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="nickname" className="text-gray-700">닉네임</Label>
               <Input
                 id="nickname"
                 placeholder="닉네임을 입력하세요"
                 value={nicknameInput}
                 onChange={(e) => setNicknameInput(e.target.value)}
                 maxLength={10}
+                className="border-2 border-blue-100 focus:border-blue-300"
               />
             </div>
-            <div>
-              <Label htmlFor="roomNumber">방 번호 (6자리)</Label>
+            <div className="space-y-2">
+              <Label htmlFor="roomNumber" className="text-gray-700">방 번호 (6자리)</Label>
               <Input
                 id="roomNumber"
                 placeholder="123456"
                 value={roomNumber}
                 onChange={(e) => setRoomNumber(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 maxLength={6}
+                className="border-2 border-blue-100 focus:border-blue-300"
               />
             </div>
             <Button
               onClick={handleJoinRoom}
               disabled={!nicknameInput.trim() || roomNumber.length !== 6 || isJoining}
-              className="w-full"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
             >
               {isJoining ? "참여 중..." : "방 참여하기"}
             </Button>
@@ -156,24 +163,29 @@ export default function HomePage() {
 
       {/* 방 생성 모달 */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[425px] border-2 border-pink-200">
           <DialogHeader>
-            <DialogTitle>방 생성하기</DialogTitle>
-            <DialogDescription>닉네임을 입력하고 새로운 게임방을 만드세요</DialogDescription>
+            <DialogTitle className="text-pink-600 text-xl">방 만들기</DialogTitle>
+            <DialogDescription className="text-gray-600">닉네임을 입력하고 새로운 게임방을 만드세요</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="createNickname">닉네임</Label>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="createNickname" className="text-gray-700">닉네임</Label>
               <Input
                 id="createNickname"
                 placeholder="닉네임을 입력하세요"
                 value={nicknameInput}
                 onChange={(e) => setNicknameInput(e.target.value)}
                 maxLength={10}
+                className="border-2 border-pink-100 focus:border-pink-300"
               />
             </div>
-            <Button onClick={handleCreateRoom} disabled={!nicknameInput.trim() || isJoining} className="w-full">
-              {isJoining ? "생성 중..." : "방 생성하기"}
+            <Button
+              onClick={handleCreateRoom}
+              disabled={!nicknameInput.trim() || isJoining}
+              className="w-full bg-pink-500 hover:bg-pink-600 text-white font-medium rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+            >
+              {isJoining ? "생성 중..." : "방 만들기"}
             </Button>
           </div>
         </DialogContent>
