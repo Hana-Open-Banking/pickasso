@@ -1,0 +1,84 @@
+name: Auto PR Summary (GPT-based)
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  summarize-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install openai
+
+      - name: Debug base branch
+        run: |
+          echo "📌 기준 브랜치 (base_ref): ${{ github.base_ref }}"
+
+      - name: Generate natural language summary using GPT
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # 기준 브랜치 자동 감지 후 diff 계산
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD > changes.diff
+
+          python3 <<EOF
+          import openai
+          import os
+
+          openai.api_key = os.getenv("OPENAI_API_KEY")
+
+          with open("changes.diff", "r") as f:
+              diff_text = f.read()
+
+          prompt = f"""다음은 git diff 결과입니다. 이 변경사항을 한국어로 간결하고 자연스럽게 요약해주세요. 
+          반드시 Pull Request 본문으로 바로 사용 가능하도록 작성해 주세요:
+
+          {diff_text}
+          """
+
+          try:
+              response = openai.ChatCompletion.create(
+                  model="gpt-4",
+                  messages=[
+                      {"role": "system", "content": "당신은 프로그래밍 변경사항을 정리하는 전문가입니다."},
+                      {"role": "user", "content": prompt}
+                  ],
+                  max_tokens=800
+              )
+
+              summary = response["choices"][0]["message"]["content"]
+
+              with open("pr_body.txt", "w") as out:
+                  out.write("## 변경 요약 (GPT 기반)\n\n")
+                  out.write(summary.strip())
+
+          except Exception as e:
+              with open("pr_body.txt", "w") as out:
+                  out.write("GPT 요약 생성 중 오류 발생: " + str(e))
+          EOF
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt update && sudo apt install gh -y
+
+      - name: Authenticate GitHub CLI
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Update PR Description
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --body "$(cat pr_body.txt)"
