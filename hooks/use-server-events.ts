@@ -12,7 +12,7 @@ interface ServerEvent {
 
 export function useServerEvents(roomId: string) {
   const [isConnected, setIsConnected] = useState(false)
-  const { setPlayers, setPhase, setKeyword, setScores, setWinner, setTimeLeft } = useGameStore()
+  const { setPlayers, setPhase, setKeyword, setScores, setWinner, setTimeLeft, setAIEvaluation } = useGameStore()
   
   // 타이머 관리를 위한 ref 사용
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -143,10 +143,15 @@ export function useServerEvents(roomId: string) {
               console.log("Next round started via SSE:", eventData)
             } else if (latestEvent.event_type === "round_completed") {
               const eventData = JSON.parse(latestEvent.event_data)
-              setScores(eventData.scores)
-              setWinner(eventData.winner)
+              console.log("🎊 라운드 완료 이벤트 처리:", eventData)
+              
+              setScores(eventData.scores || {})
+              setWinner(eventData.winner || null)
+              setAIEvaluation(eventData.aiEvaluation || null)
               setPhase("result")
               clearGameTimer()
+              
+              console.log("✅ 게임 상태 업데이트 완료: result 화면으로 전환")
             } else if (latestEvent.event_type === "host_left") {
               // 방장이 나간 경우 - 홈으로 이동
               console.log("Host left the room, redirecting to home")

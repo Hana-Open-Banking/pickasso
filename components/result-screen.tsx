@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog"
 
 export default function ResultScreen() {
-  const { players, scores, winner, isHost, nextRound, resetGame, leaveRoom, playerId, nickname } = useGameStore()
+  const { players, scores, winner, isHost, nextRound, resetGame, leaveRoom, playerId, nickname, aiEvaluation } = useGameStore()
   const [showLeaveAlert, setShowLeaveAlert] = useState(false)
   const router = useRouter()
 
@@ -162,6 +162,74 @@ export default function ResultScreen() {
               </div>
             </CardContent>
           </Card>
+
+          {/* AI 평가 결과 섹션 */}
+          {aiEvaluation && aiEvaluation.comments && aiEvaluation.comments.length > 0 && (
+            <Card className="bg-white/95 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  🤖 AI 심사위원 코멘트
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-2">
+                  Gemini AI가 각 그림을 평가한 결과입니다
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {aiEvaluation.comments.map((comment) => {
+                    const player = players.find(p => p.id === comment.playerId)
+                    const ranking = aiEvaluation.rankings?.find(r => r.playerId === comment.playerId)
+                    
+                    if (!player) return null
+                    
+                    return (
+                      <div
+                        key={comment.playerId}
+                        className={`p-4 rounded-lg border-l-4 ${
+                          comment.playerId === playerId
+                            ? "bg-blue-50 border-l-blue-500"
+                            : "bg-gray-50 border-l-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 mt-1">
+                            {player.nickname[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="font-medium">{player.nickname}</span>
+                              {comment.playerId === playerId && (
+                                <span className="text-sm text-blue-600">(나)</span>
+                              )}
+                              {ranking && (
+                                <>
+                                  <Badge variant="outline" className="text-sm">
+                                    {ranking.rank}등
+                                  </Badge>
+                                  <Badge variant="secondary" className="text-sm">
+                                    {ranking.score}점
+                                  </Badge>
+                                </>
+                              )}
+                            </div>
+                            <p className="text-gray-700 leading-relaxed">
+                              {comment.comment}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                
+                <div className="mt-6 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800 text-center">
+                    ✨ AI 평가는 제시어 연관성(50%), 창의성(30%), 완성도(20%)를 기준으로 진행됩니다
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex gap-4">
             {isHost ? (

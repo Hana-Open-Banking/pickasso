@@ -25,3 +25,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# 환경 변수 파일들
+.env.local
+.env
+*.env

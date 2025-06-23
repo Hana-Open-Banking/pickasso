@@ -8,6 +8,19 @@ export interface Player {
   score: number
 }
 
+// AI 평가 결과 인터페이스
+export interface AIEvaluation {
+  rankings: Array<{
+    rank: number
+    playerId: string
+    score: number
+  }>
+  comments: Array<{
+    playerId: string
+    comment: string
+  }>
+}
+
 export interface GameState {
   // 기본 정보
   nickname: string
@@ -25,6 +38,7 @@ export interface GameState {
   canvasData: string
   scores: Record<string, number>
   winner: string
+  aiEvaluation: AIEvaluation | null
 
   // 액션들
   setNickname: (nickname: string) => void
@@ -38,6 +52,7 @@ export interface GameState {
   setCanvasData: (data: string) => void
   setScores: (scores: Record<string, number>) => void
   setWinner: (winner: string) => void
+  setAIEvaluation: (evaluation: AIEvaluation | null) => void
 
   // 서버 액션들
   createRoom: () => Promise<string | null>
@@ -63,6 +78,7 @@ export const useGameStore = create<GameState>((set, get) => {
     canvasData: "",
     scores: {},
     winner: "",
+    aiEvaluation: null,
 
     // 기본 setter들
     setNickname: (nickname) => set({ nickname }),
@@ -99,6 +115,7 @@ export const useGameStore = create<GameState>((set, get) => {
     setCanvasData: (canvasData) => set({ canvasData }),
     setScores: (scores) => set({ scores }),
     setWinner: (winner) => set({ winner }),
+    setAIEvaluation: (aiEvaluation) => set({ aiEvaluation }),
 
     // 서버 액션들
     createRoom: async () => {
@@ -231,14 +248,17 @@ export const useGameStore = create<GameState>((set, get) => {
         console.log("Submit response:", data)
 
         if (data.success && data.allSubmitted) {
-          console.log("All players submitted, updating to result phase")
+          console.log("✅ 모든 플레이어 제출 완료, 결과 화면으로 전환")
+          console.log("🤖 AI 평가 결과:", data.aiEvaluation)
+          
           set({
             scores: data.scores,
             winner: data.winner,
+            aiEvaluation: data.aiEvaluation || null,
             currentPhase: "result",
           })
         } else if (data.success) {
-          console.log("Drawing submitted, waiting for other players")
+          console.log("그림 제출 완료, 다른 플레이어 대기 중...")
           // 다른 플레이어들이 제출할 때까지 대기
         }
       } catch (error) {
@@ -270,6 +290,7 @@ export const useGameStore = create<GameState>((set, get) => {
             canvasData: "",
             scores: {},
             winner: "",
+            aiEvaluation: null,
           })
           console.log("Next round started successfully")
         }
@@ -291,6 +312,7 @@ export const useGameStore = create<GameState>((set, get) => {
         canvasData: "",
         scores: {},
         winner: "",
+        aiEvaluation: null,
       })
     },
 
@@ -322,6 +344,7 @@ export const useGameStore = create<GameState>((set, get) => {
             canvasData: "",
             scores: {},
             winner: "",
+            aiEvaluation: null,
           })
         } else {
           console.error("Failed to leave room:", data.error)

@@ -105,6 +105,9 @@ class MemoryDatabase {
           const roundNumber = params[2]
           const canvasData = params[3]
           const keyword = params[4]
+          
+          console.log(`DB: Creating drawing with ID ${drawingIdCounter}`)
+          
           drawings.set(drawingIdCounter, {
             id: drawingIdCounter,
             player_id: playerId,
@@ -114,7 +117,12 @@ class MemoryDatabase {
             keyword,
             submitted_at: new Date().toISOString()
           })
+          
+          const insertId = drawingIdCounter
           drawingIdCounter++
+          
+          console.log(`DB: Drawing created successfully with ID ${insertId}`)
+          return { changes: 1, lastInsertRowid: insertId }
         } else if (query.includes('INSERT INTO game_events')) {
           const roomId = params[0]
           const eventType = params[1]
@@ -156,10 +164,26 @@ class MemoryDatabase {
               console.log(`DB: Updating room ${roomId} host_id to: ${newHostId}`)
               room.host_id = newHostId
             } else if (query.includes('status =')) {
-              // 단순 status 업데이트
+              // UPDATE rooms SET status = ? WHERE id = ?
+              console.log('🔍 Room status update query 분석:', {
+                query: query,
+                params: params,
+                paramsLength: params.length,
+                roomId: room.id
+              });
+              
               const status = params[0]
-              console.log(`DB: Setting room status to: ${status}`)
-              room.status = status
+              const targetRoomId = params[1]
+              console.log(`DB: Setting room ${targetRoomId} status to: ${status}`)
+              console.log(`DB: Current room ID: ${room.id}, Target room ID: ${targetRoomId}`)
+              
+              if (room.id === targetRoomId) {
+                const oldStatus = room.status;
+                room.status = status;
+                console.log(`DB: Room ${room.id} status updated: ${oldStatus} → ${status}`)
+              } else {
+                console.log(`DB: Room ID mismatch: ${room.id} !== ${targetRoomId}`)
+              }
             } else if (query.includes('current_keyword =')) {
               room.current_keyword = params[0]
               room.time_left = params[1]
@@ -183,24 +207,79 @@ class MemoryDatabase {
             }
           }
         } else if (query.includes('UPDATE players')) {
-          const playerId = params[0]
-          const player = players.get(playerId)
-          if (player) {
-            if (query.includes('has_submitted =')) {
-              const hasSubmitted = params[1]
-              console.log(`DB: Updating player ${playerId} has_submitted: ${hasSubmitted}`)
-              player.has_submitted = hasSubmitted
-            }
-            if (query.includes('score = score +')) {
-              player.score += params[0]
-            }
-            if (query.includes('is_host = TRUE')) {
-              player.is_host = true
-              console.log(`DB: Player ${playerId} became host`)
-            }
-            if (query.includes('is_host = FALSE')) {
-              player.is_host = false
-              console.log(`DB: Player ${playerId} is no longer host`)
+          // 쿼리에 따라 파라미터 해석을 다르게 처리
+          if (query.includes('score = score +') && query.includes('WHERE id = ? AND room_id = ?')) {
+            // UPDATE players SET score = score + ? WHERE id = ? AND room_id = ?
+            console.log('🔍 Score update query 분석:', {
+              query: query,
+              params: params,
+              paramsLength: params.length
+            });
+            
+            const addedScore = params[0]
+            const playerId = params[1] 
+            const roomId = params[2]
+            console.log(`DB: Adding ${addedScore} points to player ${playerId} in room ${roomId}`)
+            
+            const player = players.get(playerId)
+            console.log(`DB: Player lookup result:`, {
+              playerId: playerId,
+              playerExists: !!player,
+              playerRoomId: player?.room_id,
+              targetRoomId: roomId,
+              roomMatch: player?.room_id === roomId,
+              currentScore: player?.score
+            });
+            
+            if (player && player.room_id === roomId) {
+              const oldScore = player.score;
+              player.score += Number(addedScore);
+              console.log(`DB: Player ${playerId} score updated: ${oldScore} + ${addedScore} = ${player.score}`)
+              return { changes: 1 }
+                          } else {
+                console.log(`DB: Player ${playerId} not found in room ${roomId} for score update`)
+                return { changes: 0 }
+              }
+            } else if (query.includes('has_submitted') && query.includes('WHERE id = ? AND room_id = ?')) {
+              // UPDATE players SET has_submitted = 1 WHERE id = ? AND room_id = ?
+              const hasSubmitted = query.match(/has_submitted\s*=\s*(\?|\d+|TRUE|FALSE)/i)?.[1]
+              const playerId = params[0]
+              const roomId = params[1]
+              
+              console.log(`DB: Updating player ${playerId} in room ${roomId} has_submitted to: ${hasSubmitted}`)
+              
+              const player = players.get(playerId)
+              if (player && player.room_id === roomId) {
+                if (hasSubmitted === '1' || hasSubmitted === 'TRUE' || hasSubmitted === 'true') {
+                  player.has_submitted = true
+                } else if (hasSubmitted === '0' || hasSubmitted === 'FALSE' || hasSubmitted === 'false') {
+                  player.has_submitted = false
+                }
+                console.log(`DB: Successfully updated player ${playerId} has_submitted to: ${player.has_submitted}`)
+                return { changes: 1 }
+              } else {
+                console.log(`DB: Player ${playerId} not found in room ${roomId}`)
+                return { changes: 0 }
+              }
+            } else {
+            // 다른 형태의 UPDATE 쿼리들
+            const playerId = params[0]
+            const player = players.get(playerId)
+            if (player) {
+              if (query.includes('has_submitted =')) {
+                const hasSubmitted = params[1]
+                console.log(`DB: Updating player ${playerId} has_submitted: ${hasSubmitted}`)
+                player.has_submitted = hasSubmitted
+              }
+              if (query.includes('is_host = TRUE')) {
+                player.is_host = true
+                console.log(`DB: Player ${playerId} became host`)
+              }
+              if (query.includes('is_host = FALSE')) {
+                player.is_host = false
+                console.log(`DB: Player ${playerId} is no longer host`)
+              }
+              return { changes: 1 }
             }
           }
         } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =') && query.includes('is_host = FALSE')) {
@@ -234,10 +313,22 @@ class MemoryDatabase {
           }
         } else if (query.includes('UPDATE drawings')) {
           const score = params[0]
-          const drawingId = params[1]
-          const drawing = drawings.get(drawingId)
+          const playerId = params[1]
+          const roomId = params[2]
+          const roundNumber = params[3]
+          console.log(`DB: Updating drawing score for player ${playerId} in room ${roomId}, round ${roundNumber} to ${score}`)
+          
+          const drawing = Array.from(drawings.values()).find(d => 
+            d.player_id === playerId && d.room_id === roomId && d.round_number === roundNumber
+          )
+          
           if (drawing) {
             drawing.score = score
+            console.log(`DB: Drawing ${drawing.id} score updated to ${score}`)
+            return { changes: 1 }
+          } else {
+            console.log(`DB: Drawing not found for update`)
+            return { changes: 0 }
           }
         } else if (query.includes('DELETE FROM players') && query.includes('WHERE id = ?') && query.includes('AND room_id = ?')) {
           const [playerId, roomId] = params
@@ -286,7 +377,7 @@ class MemoryDatabase {
       get: (...params: any[]) => {
         console.log("\n[DB] Executing query:", query)
         console.log("[DB] Query parameters:", params)
-        console.log("[DB] Current players in memory:", Array.from(players.values()))
+        // console.log("[DB] Current players in memory:", Array.from(players.values()))
 
         if (query.includes('SELECT * FROM players')) {
           const [playerId, roomId] = params
@@ -296,6 +387,21 @@ class MemoryDatabase {
           const isValidPlayer = player && player.room_id === roomId
           console.log(`[DB] Is player valid for room ${roomId}?`, isValidPlayer)
           return isValidPlayer ? player : null
+        } else if (query.includes('SELECT id, nickname, has_submitted') && query.includes('WHERE id = ? AND room_id = ?')) {
+          const [playerId, roomId] = params
+          console.log(`[DB] Looking for player ${playerId} in room ${roomId} for status check`)
+          const player = players.get(playerId)
+          if (player && player.room_id === roomId) {
+            const result = {
+              id: player.id,
+              nickname: player.nickname,
+              has_submitted: player.has_submitted
+            }
+            console.log(`[DB] Returning player status:`, result)
+            return result
+          }
+          console.log(`[DB] Player not found for status check`)
+          return null
         } else if (query.includes('SELECT * FROM rooms WHERE id =')) {
           const roomId = params[0]
           console.log(`[DB] Looking for room ${roomId}`)
@@ -303,7 +409,7 @@ class MemoryDatabase {
           const room = rooms.get(roomId) || null
           console.log(`[DB] Room ${roomId} found:`, room ? 'YES' : 'NO')
           if (room) {
-            console.log(`[DB] Room details:`, room)
+            // console.log(`[DB] Room details:`, room)
           }
           return room
         } else if (query.includes('SELECT id, nickname FROM players WHERE room_id = ? AND is_host = TRUE')) {
@@ -318,12 +424,46 @@ class MemoryDatabase {
           const player = players.get(playerId)
           console.log(`[DB] Player found:`, player || 'No player found')
           return player && player.room_id === roomId ? { id: player.id, nickname: player.nickname } : null
+        } else if (query.includes('SELECT id FROM players') && query.includes('ORDER BY score DESC') && query.includes('LIMIT 1')) {
+          const roomId = params[0]
+          console.log(`[DB] Looking for winner in room ${roomId}`)
+          const winner = Array.from(players.values())
+            .filter(p => p.room_id === roomId)
+            .sort((a, b) => b.score - a.score)[0]
+          console.log(`[DB] Winner found:`, winner ? `Player ${winner.id} with ${winner.score} points` : 'No winner')
+          return winner ? { id: winner.id } : null
+        } else if (query.includes('SELECT id, player_id, room_id, round_number, keyword, LENGTH(canvas_data) as canvas_length') && query.includes('WHERE player_id = ?')) {
+          const [playerId, roomId, roundNumber] = params
+          console.log(`[DB] Looking for drawing by player ${playerId} in room ${roomId}, round ${roundNumber}`)
+          const drawing = Array.from(drawings.values()).find(d => 
+            d.player_id === playerId && d.room_id === roomId && d.round_number === roundNumber
+          )
+          if (drawing) {
+            const result = {
+              id: drawing.id,
+              player_id: drawing.player_id,
+              room_id: drawing.room_id,
+              round_number: drawing.round_number,
+              keyword: drawing.keyword,
+              canvas_length: drawing.canvas_data?.length || 0
+            }
+            console.log(`[DB] Found drawing for verification:`, result)
+            return result
+          }
+          console.log(`[DB] No drawing found for verification`)
+          return null
         }
         return null
       },
       all: (...params: any[]) => {
         console.log("\n[DB] Executing query:", query)
         console.log("[DB] Query parameters:", params)
+        // console.log("[DB] Query analysis:", {
+        //   includesDrawings: query.includes('SELECT * FROM drawings'),
+        //   includesRoomId: query.includes('WHERE room_id ='),
+        //   includesRoundNumber: query.includes('round_number ='),
+        //   fullMatch: query.includes('SELECT * FROM drawings') && query.includes('WHERE room_id =') && query.includes('round_number =')
+        // })
 
         if (query.includes('SELECT * FROM players WHERE room_id =')) {
           const roomId = params[0]
@@ -331,19 +471,45 @@ class MemoryDatabase {
           const roomPlayers = Array.from(players.values())
             .filter(p => p.room_id === roomId)
             .sort((a, b) => new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime())
-          console.log(`[DB] Found ${roomPlayers.length} players:`, roomPlayers.map(p => ({
-            id: p.id,
-            nickname: p.nickname,
-            is_host: p.is_host,
-            joined_at: p.joined_at
-          })))
+          // console.log(`[DB] Found ${roomPlayers.length} players:`, roomPlayers.map(p => ({
+          //   id: p.id,
+          //   nickname: p.nickname,
+          //   is_host: p.is_host,
+          //   joined_at: p.joined_at
+          // })))
           return roomPlayers
-        } else if (query.includes('SELECT * FROM drawings WHERE room_id =') && query.includes('round_number =')) {
+        } else if (query.includes('SELECT * FROM drawings') && query.includes('WHERE room_id =') && query.includes('round_number =')) {
           const roomId = params[0]
           const roundNumber = params[1]
-          return Array.from(drawings.values()).filter(d => 
-            d.room_id === roomId && d.round_number === roundNumber
-          )
+          console.log(`[DB] Looking for drawings in room ${roomId}, round ${roundNumber}`)
+          console.log(`[DB] All drawings in memory:`, Array.from(drawings.values()).map(d => ({
+            id: d.id,
+            player_id: d.player_id,
+            room_id: d.room_id,
+            round_number: d.round_number,
+            keyword: d.keyword
+          })))
+          
+          const foundDrawings = Array.from(drawings.values()).filter(d => {
+            const roomMatch = d.room_id === roomId
+            const roundMatch = d.round_number == roundNumber // == 대신 === 사용하여 타입까지 비교
+            const matches = roomMatch && roundMatch
+            console.log(`[DB] Drawing ${d.id}: room_id="${d.room_id}"==="${roomId}"? ${roomMatch} (types: ${typeof d.room_id}, ${typeof roomId}), round_number=${d.round_number}===${roundNumber}? ${roundMatch} (types: ${typeof d.round_number}, ${typeof roundNumber}), matches=${matches}`)
+            return matches
+          })
+          
+          console.log(`[DB] Found ${foundDrawings.length} drawings for room ${roomId}, round ${roundNumber}:`, foundDrawings.map(d => ({
+            id: d.id,
+            player_id: d.player_id,
+            canvas_data_length: d.canvas_data?.length || 0
+          })))
+          return foundDrawings
+        } else if (query.includes('SELECT * FROM drawings') && query.includes('WHERE room_id =') && !query.includes('round_number')) {
+          const roomId = params[0]
+          console.log(`[DB] Looking for all drawings in room ${roomId}`)
+          const foundDrawings = Array.from(drawings.values()).filter(d => d.room_id === roomId)
+          console.log(`[DB] Found ${foundDrawings.length} total drawings in room`)
+          return foundDrawings
         } else if (query.includes('SELECT * FROM game_events WHERE room_id =')) {
           const roomId = params[0]
           return Array.from(gameEvents.values()).filter(e => e.room_id === roomId)

@@ -38,13 +38,39 @@ export default function GameScreen() {
   }, [currentPhase])
 
   const handleSubmit = async () => {
-    console.log("Submit button clicked, canvasData length:", canvasData?.length || 0)
+    console.log("제출 버튼 클릭, Canvas 데이터 길이:", canvasData?.length || 0)
+    
     if (!isSubmitted) {
-      console.log("Submitting drawing...")
-      setIsSubmitted(true)
-      await submitDrawing(canvasData)
+      try {
+        // Canvas에서 base64 이미지 데이터 추출
+        const canvas = document.querySelector('canvas') as HTMLCanvasElement
+        let imageData = canvasData
+        
+        if (canvas && (canvas as any).getImageData) {
+          // Canvas 컴포넌트의 getImageData 함수 사용
+          imageData = (canvas as any).getImageData()
+          console.log("📸 Canvas에서 base64 데이터 추출 완료, 길이:", imageData?.length || 0)
+        }
+        
+        if (!imageData || imageData.length === 0) {
+          console.warn("⚠️  제출할 그림 데이터가 없습니다")
+          // 빈 Canvas라도 제출 허용 (흰색 배경)
+          if (canvas) {
+            imageData = canvas.toDataURL('image/png').split(',')[1]
+          }
+        }
+        
+        console.log("🎨 그림 제출 중...")
+        setIsSubmitted(true)
+        await submitDrawing(imageData)
+        console.log("✅ 그림 제출 완료!")
+        
+      } catch (error) {
+        console.error("💥 그림 제출 중 오류 발생:", error)
+        setIsSubmitted(false) // 오류 시 다시 제출 가능하도록
+      }
     } else {
-      console.log("Already submitted")
+      console.log("이미 제출 완료됨")
     }
   }
 
