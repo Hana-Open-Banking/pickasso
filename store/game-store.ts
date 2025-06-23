@@ -29,6 +29,7 @@ export interface GameState {
   roomId: string
   playerId: string
   isHost: boolean
+  modelType: "gemini" | "chatgpt" | "claude"
 
   // 게임 상태
   currentPhase: "lobby" | "drawing" | "scoring" | "result"
@@ -48,6 +49,7 @@ export interface GameState {
   setRoomId: (roomId: string) => void
   setPlayerId: (playerId: string) => void
   setIsHost: (isHost: boolean) => void
+  setModelType: (modelType: "gemini" | "chatgpt" | "claude") => void
   setPhase: (phase: GameState["currentPhase"]) => void
   setPlayers: (players: Player[]) => void
   setKeyword: (keyword: string) => void
@@ -74,6 +76,7 @@ export const useGameStore = create<GameState>((set, get) => {
     roomId: "",
     playerId: "",
     isHost: false,
+    modelType: "gemini",
     currentPhase: "lobby",
     players: [],
     keyword: "",
@@ -89,6 +92,7 @@ export const useGameStore = create<GameState>((set, get) => {
     setRoomId: (roomId) => set({ roomId }),
     setPlayerId: (playerId) => set({ playerId }),
     setIsHost: (isHost) => set({ isHost }),
+    setModelType: (modelType) => set({ modelType }),
     setPhase: (currentPhase) => {
     console.log("🔄 Phase change:", currentPhase)
     console.log("🔄 Current state before phase change:", get())
@@ -141,7 +145,7 @@ export const useGameStore = create<GameState>((set, get) => {
     console.log("🤖 AI summary:", aiEvaluation?.summary)
     console.log("🤖 AI evaluation criteria:", aiEvaluation?.evaluationCriteria)
     console.log("🤖 Previous state:", get().aiEvaluation)
-    
+
     if (aiEvaluation) {
       const newAiEvaluation = {
         rankings: aiEvaluation.rankings ? [...aiEvaluation.rankings.map(r => ({ ...r }))] : [],
@@ -155,7 +159,7 @@ export const useGameStore = create<GameState>((set, get) => {
       console.log("🤖 AI 평가를 null로 설정")
       set({ aiEvaluation: null })
     }
-    
+
     // 즉시 검증
     setTimeout(() => {
       const currentState = get().aiEvaluation
@@ -182,6 +186,7 @@ export const useGameStore = create<GameState>((set, get) => {
           body: JSON.stringify({
             hostId: playerId,
             nickname: state.nickname,
+            modelType: state.modelType,
           }),
         })
 
@@ -268,7 +273,7 @@ export const useGameStore = create<GameState>((set, get) => {
 
     submitDrawing: async (canvasData: string) => {
       const state = get()
-      
+
       console.log("Submitting drawing:", {
         playerId: state.playerId,
         roomId: state.roomId,
@@ -306,7 +311,7 @@ export const useGameStore = create<GameState>((set, get) => {
             // ✅ 개선: 모든 사용자가 동일하게 처리 중 상태 표시
             console.log("🤖 AI 평가 중... SSE를 통해 결과를 기다립니다");
             console.log("💡 메시지:", data.message);
-            
+
             // 처리 중 상태 유지 (SSE에서 결과를 받을 때까지)
             set({ 
               currentPhase: "scoring",

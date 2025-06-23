@@ -7,6 +7,7 @@ export interface Room {
   current_keyword?: string
   time_left: number
   round_number: number
+  model_type?: "gemini" | "chatgpt" | "claude" // AI 모델 타입
 }
 
 export interface Player {
@@ -75,33 +76,33 @@ const saveMemoryBackup = () => {
       drawingIdCounter,
       eventIdCounter
     }
-    console.log('[DB] Memory backup created:', {
-      roomsCount: backup.rooms.length,
-      playersCount: backup.players.length,
-      drawingsCount: backup.drawings.length,
-      eventsCount: backup.gameEvents.length
-    })
+    // console.log('[DB] Memory backup created:', {
+    //   roomsCount: backup.rooms.length,
+    //   playersCount: backup.players.length,
+    //   drawingsCount: backup.drawings.length,
+    //   eventsCount: backup.gameEvents.length
+    // })
     return backup
   }
 }
 
 const restoreMemoryBackup = (backup: any) => {
   if (backup && process.env.NODE_ENV === 'development') {
-    console.log('[DB] Restoring memory from backup...')
+    // console.log('[DB] Restoring memory from backup...')
     backup.rooms?.forEach(([key, value]: [string, Room]) => rooms.set(key, value))
     backup.players?.forEach(([key, value]: [string, Player]) => players.set(key, value))
     backup.drawings?.forEach(([key, value]: [number, Drawing]) => drawings.set(key, value))
     backup.gameEvents?.forEach(([key, value]: [number, GameEvent]) => gameEvents.set(key, value))
-    
+
     if (backup.drawingIdCounter) drawingIdCounter = backup.drawingIdCounter
     if (backup.eventIdCounter) eventIdCounter = backup.eventIdCounter
-    
-    console.log('[DB] Memory restored from backup:', {
-      roomsCount: rooms.size,
-      playersCount: players.size,
-      drawingsCount: drawings.size,
-      eventsCount: gameEvents.size
-    })
+
+    // console.log('[DB] Memory restored from backup:', {
+    //   roomsCount: rooms.size,
+    //   playersCount: players.size,
+    //   drawingsCount: drawings.size,
+    //   eventsCount: gameEvents.size
+    // })
   }
 }
 
@@ -110,19 +111,20 @@ class MemoryDatabase {
   prepare(query: string) {
     return {
       run: (...params: any[]) => {
-        console.log("\n[DB] Executing query:", query)
-        console.log("[DB] Query parameters:", params)
+        // console.log("\n[DB] Executing query:", query)
+        // console.log("[DB] Query parameters:", params)
 
         if (query.includes('INSERT INTO rooms')) {
-          const [roomId, hostId] = params
-          console.log(`[DB] Creating room ${roomId} with host ${hostId}`)
+          const [roomId, hostId, modelType] = params
+          console.log(`[DB] Creating room ${roomId} with host ${hostId}, model: ${modelType || 'gemini'}`)
           rooms.set(roomId, {
             id: roomId,
             host_id: hostId,
             created_at: new Date().toISOString(),
             status: 'waiting',
             time_left: 60,
-            round_number: 1
+            round_number: 1,
+            model_type: modelType || 'gemini'
           })
           console.log(`[DB] Room created:`, rooms.get(roomId))
           return { changes: 1 }
@@ -146,9 +148,9 @@ class MemoryDatabase {
           const roundNumber = params[2]
           const canvasData = params[3]
           const keyword = params[4]
-          
+
           console.log(`DB: Creating drawing with ID ${drawingIdCounter}`)
-          
+
           drawings.set(drawingIdCounter, {
             id: drawingIdCounter,
             player_id: playerId,
@@ -158,20 +160,20 @@ class MemoryDatabase {
             keyword,
             submitted_at: new Date().toISOString()
           })
-          
+
           const insertId = drawingIdCounter
           drawingIdCounter++
-          
+
           console.log(`DB: Drawing created successfully with ID ${insertId}`)
           return { changes: 1, lastInsertRowid: insertId }
         } else if (query.includes('INSERT INTO game_events')) {
           const roomId = params[0]
           const eventType = params[1]
           const eventData = params[2]
-          
+
           console.log(`[DB] Creating game event ${eventIdCounter} for room ${roomId}, type: ${eventType}`)
-          console.log(`[DB] Event data length: ${eventData?.length || 0}`)
-          
+          // console.log(`[DB] Event data length: ${eventData?.length || 0}`)
+
           gameEvents.set(eventIdCounter, {
             id: eventIdCounter,
             room_id: roomId,
@@ -179,14 +181,14 @@ class MemoryDatabase {
             event_data: eventData,
             created_at: new Date().toISOString()
           })
-          
+
           const insertId = eventIdCounter
           eventIdCounter++
           globalThis.__eventIdCounter = eventIdCounter
-          
+
           console.log(`[DB] Game event created successfully with ID ${insertId}`)
           console.log(`[DB] Total events in memory: ${gameEvents.size}`)
-          
+
           return { changes: 1, lastInsertRowid: insertId }
         } else if (query.includes('UPDATE rooms')) {
           const roomId = params[params.length - 1]
@@ -224,12 +226,12 @@ class MemoryDatabase {
                 paramsLength: params.length,
                 roomId: room.id
               });
-              
+
               const status = params[0]
               const targetRoomId = params[1]
               console.log(`DB: Setting room ${targetRoomId} status to: ${status}`)
               console.log(`DB: Current room ID: ${room.id}, Target room ID: ${targetRoomId}`)
-              
+
               if (room.id === targetRoomId) {
                 const oldStatus = room.status;
                 room.status = status;
@@ -252,7 +254,7 @@ class MemoryDatabase {
           const roomId = params[0]
           const hasSubmitted = params[1]
           console.log(`DB: Resetting all players in room ${roomId} has_submitted to: ${hasSubmitted}`)
-          
+
           for (const player of players.values()) {
             if (player.room_id === roomId) {
               player.has_submitted = hasSubmitted
@@ -268,12 +270,12 @@ class MemoryDatabase {
               params: params,
               paramsLength: params.length
             });
-            
+
             const addedScore = params[0]
             const playerId = params[1] 
             const roomId = params[2]
             console.log(`DB: Adding ${addedScore} points to player ${playerId} in room ${roomId}`)
-            
+
             const player = players.get(playerId)
             console.log(`DB: Player lookup result:`, {
               playerId: playerId,
@@ -283,7 +285,7 @@ class MemoryDatabase {
               roomMatch: player?.room_id === roomId,
               currentScore: player?.score
             });
-            
+
             if (player && player.room_id === roomId) {
               const oldScore = player.score;
               player.score += Number(addedScore);
@@ -298,9 +300,9 @@ class MemoryDatabase {
               const hasSubmitted = query.match(/has_submitted\s*=\s*(\?|\d+|TRUE|FALSE)/i)?.[1]
               const playerId = params[0]
               const roomId = params[1]
-              
+
               console.log(`DB: Updating player ${playerId} in room ${roomId} has_submitted to: ${hasSubmitted}`)
-              
+
               const player = players.get(playerId)
               if (player && player.room_id === roomId) {
                 if (hasSubmitted === '1' || hasSubmitted === 'TRUE' || hasSubmitted === 'true') {
@@ -370,11 +372,11 @@ class MemoryDatabase {
           const roomId = params[2]
           const roundNumber = params[3]
           console.log(`DB: Updating drawing score for player ${playerId} in room ${roomId}, round ${roundNumber} to ${score}`)
-          
+
           const drawing = Array.from(drawings.values()).find(d => 
             d.player_id === playerId && d.room_id === roomId && d.round_number === roundNumber
           )
-          
+
           if (drawing) {
             drawing.score = score
             console.log(`DB: Drawing ${drawing.id} score updated to ${score}`)
@@ -386,33 +388,33 @@ class MemoryDatabase {
         } else if (query.includes('DELETE FROM players') && query.includes('WHERE id = ?') && query.includes('AND room_id = ?')) {
           const [playerId, roomId] = params
           console.log(`[DB] DELETE 로직 진입! player: ${playerId}, room: ${roomId}`)
-          
+
           const player = players.get(playerId)
           console.log(`[DB] Found player:`, player)
-          
+
           if (player && player.room_id === roomId) {
             const deleteResult = players.delete(playerId)
             console.log(`[DB] Delete result:`, deleteResult)
             return { changes: 1 }
           }
-          
+
           return { changes: 0 }
         } else if (query.includes('DELETE FROM rooms WHERE id =')) {
           const roomId = params[0]
           console.log(`[DB] Deleting room ${roomId}`)
           const roomDeleted = rooms.delete(roomId)
           console.log(`[DB] Room deletion successful:`, roomDeleted)
-          
+
           // 방이 삭제될 때 해당 방의 모든 플레이어도 삭제
           let playerCount = 0
           const playersToDelete = Array.from(players.values()).filter(p => p.room_id === roomId)
-          
+
           for (const player of playersToDelete) {
             console.log(`[DB] Removing player ${player.id} as part of room ${roomId} deletion`)
             players.delete(player.id)
             playerCount++
           }
-          
+
           console.log(`[DB] Room ${roomId} and ${playerCount} players deleted`)
           return { changes: roomDeleted ? 1 : 0 }
         } else if (query.includes('UPDATE players') && query.includes('has_submitted')) {
@@ -542,7 +544,7 @@ class MemoryDatabase {
             round_number: d.round_number,
             keyword: d.keyword
           })))
-          
+
           const foundDrawings = Array.from(drawings.values()).filter(d => {
             const roomMatch = d.room_id === roomId
             const roundMatch = d.round_number == roundNumber // == 대신 === 사용하여 타입까지 비교
@@ -550,7 +552,7 @@ class MemoryDatabase {
             console.log(`[DB] Drawing ${d.id}: room_id="${d.room_id}"==="${roomId}"? ${roomMatch} (types: ${typeof d.room_id}, ${typeof roomId}), round_number=${d.round_number}===${roundNumber}? ${roundMatch} (types: ${typeof d.round_number}, ${typeof roundNumber}), matches=${matches}`)
             return matches
           })
-          
+
           console.log(`[DB] Found ${foundDrawings.length} drawings for room ${roomId}, round ${roundNumber}:`, foundDrawings.map(d => ({
             id: d.id,
             player_id: d.player_id,
@@ -569,7 +571,7 @@ class MemoryDatabase {
           console.log(`[DB] Query:`, query)
           console.log(`[DB] Params:`, params)
           console.log(`[DB] Total events in memory:`, gameEvents.size)
-          
+
           const roomEvents = Array.from(gameEvents.values())
             .filter(e => {
               const matches = e.room_id === roomId
@@ -577,7 +579,7 @@ class MemoryDatabase {
               return matches
             })
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          
+
           console.log(`[DB] Found ${roomEvents.length} events for room ${roomId}:`, roomEvents.map(e => ({
             id: e.id,
             event_type: e.event_type,
@@ -585,7 +587,7 @@ class MemoryDatabase {
             data_length: e.event_data?.length || 0,
             created_at: e.created_at
           })))
-          
+
           return roomEvents
         } else if (query.includes('SELECT event_data FROM game_events') && query.includes('WHERE room_id = ?') && query.includes("event_type = 'round_completed'")) {
           const roomId = params[0]

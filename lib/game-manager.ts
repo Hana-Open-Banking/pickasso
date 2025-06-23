@@ -42,15 +42,15 @@ const keywords = [
 ]
 
 export class GameManager {
-  static createRoom(hostId: string): string {
+  static createRoom(hostId: string, modelType: "gemini" | "chatgpt" | "claude" = "gemini"): string {
     const roomId = Math.floor(100000 + Math.random() * 900000).toString()
-    console.log(`Creating room with ID: ${roomId}, hostId: ${hostId}`)
+    console.log(`Creating room with ID: ${roomId}, hostId: ${hostId}, model: ${modelType}`)
 
     const stmt = db.prepare(`
-      INSERT INTO rooms (id, host_id, status, time_left, round_number)
-      VALUES (?, ?, 'waiting', 60, 1)
+      INSERT INTO rooms (id, host_id, status, time_left, round_number, model_type)
+      VALUES (?, ?, 'waiting', 60, 1, ?)
     `)
-    stmt.run(roomId, hostId)
+    stmt.run(roomId, hostId, modelType)
 
     console.log(`Room ${roomId} created successfully in database`)
     return roomId
@@ -62,7 +62,7 @@ export class GameManager {
       console.log(`Room ${roomId} not found`)
       return false
     }
-    
+
     if (room.status !== "waiting") {
       console.log(`Room ${roomId} is not in waiting status. Current status: ${room.status}`)
       return false
@@ -114,12 +114,12 @@ export class GameManager {
   static getRoomPlayers(roomId: string): Player[] {
     const stmt = db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY joined_at")
     const players = stmt.all(roomId) as Player[]
-    
+
     console.log(`👥 방 ${roomId} 플레이어 목록:`)
     players.forEach(player => {
       console.log(`  Player ${player.id}: nickname="${player.nickname}", has_submitted="${player.has_submitted}" (type: ${typeof player.has_submitted})`)
     })
-    
+
     return players
   }
 
@@ -152,7 +152,7 @@ export class GameManager {
       canvasDataLength: canvasData?.length || 0,
       hasCanvasData: !!canvasData
     })
-    
+
     const room = this.getRoom(roomId)
     if (!room) {
       console.error(`❌ Room ${roomId} not found for drawing submission`)
@@ -209,15 +209,17 @@ export class GameManager {
         FROM drawings 
         WHERE player_id = ? AND room_id = ? AND round_number = ?
       `).get(playerId, roomId, room.round_number)
-      
+
       console.log(`🔍 저장 검증:`, savedDrawing)
 
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`💥 그림 저장 중 오류:`, error)
-      console.error(`🔍 오류 상세:`, {
-        name: error.name,
-        message: error.message
-      })
+      if (error instanceof Error) {
+        console.error(`🔍 오류 상세:`, {
+          name: error.name,
+          message: error.message
+        })
+      }
     }
   }
 
@@ -280,7 +282,7 @@ export class GameManager {
       // 유효한 그림 데이터가 있는지 확인
       const validSubmissions = submissions.filter(s => s.imageData && s.imageData.length > 100) // 최소 100자 이상
       console.log(`✅ 유효한 그림 데이터: ${validSubmissions.length}/${submissions.length}개`)
-      
+
       if (validSubmissions.length === 0) {
         console.log('⚠️  유효한 그림 데이터가 없습니다. 기본 결과 생성...')
         const fallbackResult = {
@@ -296,22 +298,22 @@ export class GameManager {
           summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 진행되었습니다. 모든 참가자들이 짧은 시간 내에 열심히 그려주셨고, 각자의 개성이 담긴 작품들이 완성되었습니다. 🎨`,
           evaluationCriteria: "주제 연관성, 창의성, 완성도를 기준으로 공정하게 평가했습니다. 모든 작품에 각각의 매력이 있었습니다!"
         }
-        
+
         // 점수 저장
         const scores: Record<string, number> = {}
         fallbackResult.rankings.forEach((ranking) => {
           scores[ranking.playerId] = ranking.score
-          
+
           // 데이터베이스 업데이트
           db.prepare(`UPDATE drawings SET score = ? WHERE player_id = ? AND room_id = ? AND round_number = ?`)
             .run(ranking.score, ranking.playerId, roomId, room.round_number)
           db.prepare(`UPDATE players SET score = score + ? WHERE id = ? AND room_id = ?`)
             .run(ranking.score, ranking.playerId, roomId)
         })
-        
+
         // 방 상태 업데이트
         db.prepare(`UPDATE rooms SET status = 'finished' WHERE id = ?`).run(roomId)
-        
+
         console.log('📊 기본 결과 생성 완료:', { scores, evaluationResult: fallbackResult })
         return { scores, evaluationResult: fallbackResult }
       }
@@ -328,29 +330,49 @@ export class GameManager {
       });
 
       // AI 평가 수행 (환경 변수로 활성화/비활성화 가능)
-      let useAI = process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here'
-      console.log(`🤖 AI 평가 설정: ${useAI ? '활성화' : '비활성화 (기본 결과 사용)'}`)
-      
+      const modelType = room.model_type || 'gemini'
+      let useAI = false
+
+      // 모델 타입에 따라 API 키 확인
+      switch (modelType) {
+        case 'gemini':
+          useAI = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here'
+          break
+        case 'chatgpt':
+          useAI = !!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here'
+          break
+        case 'claude':
+          useAI = !!process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here'
+          break
+      }
+
+      console.log(`🤖 AI 평가 설정 (${modelType}): ${useAI ? '활성화' : '비활성화 (기본 결과 사용)'}`)
+
       let evaluationResult: EvaluationResult
-      
+
       if (useAI) {
         try {
-          console.log(`🚀 Gemini AI 평가 시작...`)
+          const modelType = room.model_type || 'gemini'
+          console.log(`🚀 ${modelType.toUpperCase()} AI 평가 시작...`)
           const aiEvaluator = await import('./ai-evaluator')
-          evaluationResult = await aiEvaluator.evaluateDrawingsWithRetry(validSubmissions, room.current_keyword || '그림')
-          
+          evaluationResult = await aiEvaluator.evaluateDrawingsWithRetry(
+            validSubmissions, 
+            room.current_keyword || '그림',
+            modelType as "gemini" | "chatgpt" | "claude"
+          )
+
           // AI 평가 결과 검증
           if (!evaluationResult || !evaluationResult.rankings || evaluationResult.rankings.length === 0) {
             throw new Error('AI 평가 결과가 유효하지 않습니다')
           }
-          
+
           console.log(`✅ AI 평가 성공! 결과 검증 완료`)
-        } catch (error) {
-          console.error(`💥 AI 평가 실패, 기본 결과로 전환:`, error.message)
+        } catch (error: unknown) {
+          console.error(`💥 AI 평가 실패, 기본 결과로 전환:`, error instanceof Error ? error.message : String(error))
           useAI = false; // AI 실패 시 기본 결과로 전환
         }
       }
-      
+
       if (!useAI) {
         console.log(`🎯 기본 결과 생성 중...`)
         // 기본 결과 생성
@@ -367,13 +389,13 @@ export class GameManager {
           summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 ${validSubmissions.length}명이 참여했습니다. 모든 작품에서 각자의 창의성과 개성이 잘 드러났으며, 주제를 나름대로 해석한 다양한 접근 방식이 인상적이었습니다! 🌟`,
           evaluationCriteria: "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. AI 평가가 제한되어 기본 평가를 적용했지만, 모든 작품의 노력을 인정합니다."
         }
-        
+
         // 점수 기준으로 순위 재정렬
         evaluationResult.rankings.sort((a, b) => b.score - a.score)
         evaluationResult.rankings.forEach((ranking, index) => {
           ranking.rank = index + 1
         })
-        
+
         console.log(`✅ 기본 결과 생성 완료:`, {
           rankingsCount: evaluationResult.rankings.length,
           scoreRange: `${Math.min(...evaluationResult.rankings.map(r => r.score))}~${Math.max(...evaluationResult.rankings.map(r => r.score))}점`
@@ -391,7 +413,7 @@ export class GameManager {
 
       // 점수 추출
       const scores: Record<string, number> = {}
-      
+
       // 평가 결과를 데이터베이스에 저장
       console.log('💾 데이터베이스 저장 시작...');
       evaluationResult.rankings.forEach((ranking) => {
@@ -405,7 +427,7 @@ export class GameManager {
           SET score = ? 
           WHERE player_id = ? AND room_id = ? AND round_number = ?
         `).run(ranking.score, ranking.playerId, roomId, room.round_number)
-        
+
         console.log(`📊 그림 점수 업데이트 결과:`, {
           playerId: ranking.playerId,
           score: ranking.score,
@@ -418,7 +440,7 @@ export class GameManager {
           SET score = score + ? 
           WHERE id = ? AND room_id = ?
         `).run(ranking.score, ranking.playerId, roomId)
-        
+
         console.log(`👤 플레이어 총점 업데이트 결과:`, {
           playerId: ranking.playerId,
           addedScore: ranking.score,
@@ -427,7 +449,7 @@ export class GameManager {
 
         console.log(`🏆 Player ${ranking.playerId}: ${ranking.score}점 (${ranking.rank}등)`)
       })
-      
+
       console.log('💾 모든 점수 저장 완료');
 
       // 방 상태를 'finished'로 변경
@@ -436,12 +458,12 @@ export class GameManager {
         SET status = ? 
         WHERE id = ?
       `).run('finished', roomId)
-      
+
       console.log(`🏁 Room ${roomId} 채점 완료 및 상태 업데이트`)
 
       return { scores, evaluationResult }
 
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('💥 AI 채점 중 오류 발생:', error)
 
       // 오류 발생 시 기본 점수 할당
@@ -452,7 +474,7 @@ export class GameManager {
       drawings.forEach((drawing, index) => {
         const score = Math.floor(Math.random() * 30) + 70 // 70-100점 범위
         scores[drawing.player_id] = score
-        
+
         rankings.push({
           rank: index + 1,
           playerId: drawing.player_id,
@@ -498,7 +520,7 @@ export class GameManager {
         summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 진행되었습니다. AI 평가 중 오류가 발생했지만, ${drawings.length}명의 참가자가 열심히 그려준 작품들을 기본 기준으로 평가했습니다. 모든 작품에 각자의 노력과 창의성이 담겨 있었습니다! 🎨`,
         evaluationCriteria: "기술적 문제로 AI 평가가 제한되었지만, 기본적인 평가 기준을 적용하여 공정하게 평가했습니다. 모든 참가자의 노력을 인정합니다."
       }
-      
+
       console.log(`⚠️  기본 채점 결과:`, scores)
       return { scores, evaluationResult: fallbackResult }
     }
@@ -560,7 +582,7 @@ export class GameManager {
 
   static removePlayer(roomId: string, playerId: string): boolean {
     console.log(`[GameManager] Removing player ${playerId} from room ${roomId}`)
-    
+
     // 플레이어가 실제로 방에 있는지 확인
     const player = db.prepare(`
       SELECT * FROM players 
@@ -598,7 +620,7 @@ export class GameManager {
       }
 
       return true
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[GameManager] Failed to remove player:`, error)
       return false
     }
@@ -606,30 +628,30 @@ export class GameManager {
 
   static transferHost(roomId: string, newHostId: string): void {
     console.log(`[GameManager] Transferring host to player ${newHostId} in room ${roomId}`)
-    
+
     // 현재 방장 정보 확인
     const currentHost = db.prepare(`
       SELECT id, nickname FROM players 
       WHERE room_id = ? AND is_host = TRUE
     `).get(roomId) as { id: string, nickname: string } | null
-    
+
     if (currentHost) {
       console.log(`[GameManager] Current host: ${currentHost.id} (${currentHost.nickname})`)
     }
-    
+
     // 새로운 방장 정보 확인
     const newHost = db.prepare(`
       SELECT id, nickname FROM players 
       WHERE id = ? AND room_id = ?
     `).get(newHostId, roomId) as { id: string, nickname: string } | null
-    
+
     if (!newHost) {
       console.error(`[GameManager] New host ${newHostId} not found in room ${roomId}`)
       throw new Error(`New host ${newHostId} not found in room ${roomId}`)
     }
-    
+
     console.log(`[GameManager] New host candidate: ${newHost.id} (${newHost.nickname})`)
-    
+
     try {
       // 먼저 새로운 방장 설정
       const updateNewHost = db.prepare(`
@@ -639,7 +661,7 @@ export class GameManager {
       `)
       const newHostResult = updateNewHost.run(newHostId, roomId)
       console.log(`[GameManager] New host update result:`, newHostResult)
-      
+
       // 그 다음 기존 방장을 일반 플레이어로 변경
       const updateOldHost = db.prepare(`
         UPDATE players 
@@ -648,7 +670,7 @@ export class GameManager {
       `)
       const oldHostResult = updateOldHost.run(roomId, newHostId)
       console.log(`[GameManager] Old host update result:`, oldHostResult)
-      
+
       // 방의 host_id 업데이트
       const updateRoom = db.prepare(`
         UPDATE rooms 
@@ -657,21 +679,21 @@ export class GameManager {
       `)
       const roomResult = updateRoom.run(newHostId, roomId)
       console.log(`[GameManager] Room update result:`, roomResult)
-      
+
       // 변경 사항 확인
       const verifyHost = db.prepare(`
         SELECT id, nickname, is_host FROM players 
         WHERE room_id = ? AND is_host = TRUE
       `).get(roomId) as { id: string, nickname: string, is_host: boolean } | null
-      
+
       console.log(`[GameManager] Verification - Current host:`, verifyHost)
-      
+
       const verifyRoom = db.prepare(`
         SELECT host_id FROM rooms WHERE id = ?
       `).get(roomId) as { host_id: string } | null
-      
+
       console.log(`[GameManager] Verification - Room host_id:`, verifyRoom)
-      
+
       if (!verifyHost || verifyHost.id !== newHostId) {
         throw new Error(`Host transfer verification failed. Expected host: ${newHostId}, Actual host: ${verifyHost?.id}`)
       }
@@ -682,9 +704,9 @@ export class GameManager {
         newHostId: newHost.id,
         newHostNickname: newHost.nickname
       })
-      
+
       console.log(`[GameManager] Host successfully transferred from ${currentHost?.id} to ${newHostId}`)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[GameManager] Error transferring host:`, error)
       throw error
     }
@@ -693,24 +715,24 @@ export class GameManager {
   static findNewHost(roomId: string, excludePlayerId?: string): string | null {
     const players = this.getRoomPlayers(roomId)
     console.log(`findNewHost: All players in room ${roomId}:`, players.map(p => ({ id: p.id, nickname: p.nickname, is_host: p.is_host, joined_at: p.joined_at })))
-    
+
     if (players.length === 0) {
       console.log(`findNewHost: No players in room ${roomId}`)
       return null
     }
-    
+
     // 나가려는 플레이어를 제외한 플레이어들 중에서 선택
     const availablePlayers = excludePlayerId 
       ? players.filter(p => p.id !== excludePlayerId)
       : players
-    
+
     console.log(`findNewHost: Excluding player ${excludePlayerId}, available players:`, availablePlayers.map(p => ({ id: p.id, nickname: p.nickname, is_host: p.is_host, joined_at: p.joined_at })))
-    
+
     if (availablePlayers.length === 0) {
       console.log(`findNewHost: No available players after exclusion`)
       return null
     }
-    
+
     // 가장 먼저 입장한 플레이어를 새로운 방장으로 선택
     // joined_at으로 정렬하여 가장 먼저 들어온 플레이어 선택
     const sortedPlayers = availablePlayers.sort((a, b) => {
@@ -718,19 +740,19 @@ export class GameManager {
       const bTime = new Date(b.joined_at).getTime()
       return aTime - bTime
     })
-    
+
     const newHost = sortedPlayers[0]
     console.log(`findNewHost: New host selected: ${newHost.id} (${newHost.nickname}) - joined at ${newHost.joined_at}`)
     return newHost.id
   }
 
-  static addGameEvent(roomId: string, eventType: string, eventData?: any): void {
+  static addGameEvent(roomId: string, eventType: string, eventData?: Record<string, unknown>): void {
     console.log(`📡 Adding game event:`, {
       roomId,
       eventType,
       eventData: eventData ? JSON.stringify(eventData).substring(0, 200) + '...' : null
     })
-    
+
     try {
       // JSON 문자열이 너무 클 수도 있으니 길이 확인
       const jsonString = eventData ? JSON.stringify(eventData) : null
@@ -739,20 +761,20 @@ export class GameManager {
         jsonLength: jsonString?.length || 0,
         eventDataType: typeof eventData
       })
-      
+
       const stmt = db.prepare(`
         INSERT INTO game_events (room_id, event_type, event_data, created_at)
         VALUES (?, ?, ?, datetime('now'))
       `)
       const result = stmt.run(roomId, eventType, jsonString)
-      
+
       console.log(`✅ Game event added successfully:`, {
         eventId: result.lastInsertRowid,
         roomId,
         eventType,
         changes: result.changes
       })
-      
+
       // 검증: 생성된 이벤트 확인
       const verifyEvent = db.prepare(`
         SELECT id, room_id, event_type, created_at, LENGTH(event_data) as data_length
@@ -761,7 +783,7 @@ export class GameManager {
         ORDER BY created_at DESC 
         LIMIT 1
       `).get(roomId, eventType)
-      
+
       console.log(`🔍 Event verification:`, {
         found: !!verifyEvent,
         eventId: verifyEvent?.id,
@@ -769,13 +791,13 @@ export class GameManager {
         dataLength: verifyEvent?.data_length,
         createdAt: verifyEvent?.created_at
       })
-      
+
       // 추가 검증: 실제 데이터 내용 확인
       if (verifyEvent && eventType === 'round_completed') {
         const fullEvent = db.prepare(`
           SELECT event_data FROM game_events WHERE id = ?
-        `).get(verifyEvent.id) as any
-        
+        `).get(verifyEvent.id) as { event_data?: string }
+
         if (fullEvent?.event_data) {
           try {
             const parsedData = JSON.parse(fullEvent.event_data)
@@ -786,19 +808,27 @@ export class GameManager {
               aiEvaluationKeys: parsedData.aiEvaluation ? Object.keys(parsedData.aiEvaluation) : [],
               scoresCount: parsedData.scores ? Object.keys(parsedData.scores).length : 0
             })
-          } catch (parseError) {
+          } catch (parseError: unknown) {
             console.error(`💥 Failed to parse saved event data:`, parseError)
           }
         }
       }
-      
-    } catch (error) {
+
+    } catch (error: unknown) {
       console.error(`💥 Failed to add game event:`, error)
-      console.error(`💥 Error details:`, {
-        name: error.name,
-        message: error.message,
-        code: error.code
-      })
+      if (error instanceof Error) {
+        const errorDetails: Record<string, unknown> = {
+          name: error.name,
+          message: error.message
+        };
+
+        // Check if error has a 'code' property
+        if ('code' in error) {
+          errorDetails.code = (error as { code: unknown }).code;
+        }
+
+        console.error(`💥 Error details:`, errorDetails);
+      }
       throw error
     }
   }

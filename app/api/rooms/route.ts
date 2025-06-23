@@ -3,21 +3,27 @@ import { GameManager } from "@/lib/game-manager"
 
 export async function POST(request: NextRequest) {
   try {
-    const { hostId, nickname } = await request.json()
+    const { hostId, nickname, modelType = "gemini" } = await request.json()
 
-    console.log(`Creating room request: hostId=${hostId}, nickname=${nickname}`)
+    console.log(`Creating room request: hostId=${hostId}, nickname=${nickname}, modelType=${modelType}`)
 
     if (!hostId || !nickname) {
       console.log("Missing required fields:", { hostId, nickname })
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const roomId = GameManager.createRoom(hostId)
-    console.log(`Room created: ${roomId}`)
-    
+    // Validate modelType
+    if (!["gemini", "chatgpt", "claude"].includes(modelType)) {
+      console.log("Invalid model type:", modelType)
+      return NextResponse.json({ error: "Invalid model type" }, { status: 400 })
+    }
+
+    const roomId = GameManager.createRoom(hostId, modelType as "gemini" | "chatgpt" | "claude")
+    console.log(`Room created: ${roomId} with model: ${modelType}`)
+
     GameManager.addHost(roomId, hostId, nickname)
     console.log(`Host added to room: ${roomId}, hostId: ${hostId}, nickname: ${nickname}`)
-    
+
     GameManager.addGameEvent(roomId, "room_created", { hostId, nickname })
 
     const room = GameManager.getRoom(roomId)
