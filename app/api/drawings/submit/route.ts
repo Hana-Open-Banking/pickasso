@@ -45,78 +45,34 @@ export async function POST(request: NextRequest) {
       });
       
       try {
-        // AI 자동 채점 시작
-        console.log("🚀 GameManager.scoreDrawings 호출 시작");
-        const { scores, evaluationResult } = await GameManager.scoreDrawings(roomId)
-        console.log("🎊 GameManager.scoreDrawings 완료");
-        
-        const winner = GameManager.getWinner(roomId)
-        
-        console.log("✅ AI 채점 완료");
-        console.log("📈 최종 점수:", scores);
-        console.log("🏆 우승자:", winner);
-        console.log("🤖 AI 평가 결과 요약:", {
-          hasEvaluation: !!evaluationResult,
-          rankingsCount: evaluationResult?.rankings?.length || 0,
-          commentsCount: evaluationResult?.comments?.length || 0
-        });
-        
-        if (evaluationResult) {
-          console.log("🏅 순위별 결과:");
-          evaluationResult.rankings.forEach(rank => {
-            console.log(`  ${rank.rank}등: Player ${rank.playerId} (${rank.score}점)`);
-          });
-          
-          console.log("💬 AI 코멘트:");
-          evaluationResult.comments.forEach(comment => {
-            console.log(`  Player ${comment.playerId}: ${comment.comment.substring(0, 50)}...`);
-          });
-        }
-
-        // 게임 완료 이벤트 추가 (AI 평가 결과 포함)
-        console.log("📝 게임 이벤트 추가 중...");
-        GameManager.addGameEvent(roomId, "round_completed", { 
-          scores, 
-          winner,
-          aiEvaluation: evaluationResult
-        })
-        console.log("📝 게임 이벤트 추가 완료");
-
-        const responseData = {
+        // ✅ 개선: 모든 사용자에게 동일한 "처리 중" 응답 반환
+        const processingResponse = {
           success: true,
           allSubmitted: true,
-          scores,
-          winner,
-          aiEvaluation: evaluationResult
+          processing: true,
+          message: "🤖 AI가 작품을 평가하고 있습니다. 잠시만 기다려주세요!"
         };
-        
-        console.log("📤 클라이언트 응답 데이터:", {
-          success: responseData.success,
-          scoresCount: Object.keys(responseData.scores).length,
-          winner: responseData.winner,
-          hasAiEvaluation: !!responseData.aiEvaluation
+
+        // 🔄 백그라운드에서 AI 평가 처리 (결과를 기다리지 않음)
+        processAIEvaluationAsync(roomId).catch(error => {
+          console.error("💥 백그라운드 AI 평가 실패:", error);
+          // 실패 시에도 기본 결과 이벤트 발생
+          GameManager.addGameEvent(roomId, "ai_evaluation_failed", { 
+            error: error.message,
+            fallbackUsed: true
+          });
         });
 
-        return NextResponse.json(responseData)
+        // ✅ 모든 사용자가 동일한 응답을 받음
+        return NextResponse.json(processingResponse);
+        
       } catch (error) {
-        console.error("💥 AI 채점 중 오류 발생:", error)
-        console.error("🔍 오류 상세:", {
-          name: error.name,
-          message: error.message,
-          stack: error.stack?.substring(0, 500)
-        });
-        
-        // 오류 발생 시 기본 응답
-        const fallbackResponse = {
+        console.error("💥 AI 채점 준비 중 오류 발생:", error);
+        return NextResponse.json({
           success: true,
           allSubmitted: true,
-          scores: {},
-          winner: null,
-          error: "AI 평가 중 오류가 발생했습니다"
-        };
-        
-        console.log("🔄 기본 응답 반환:", fallbackResponse);
-        return NextResponse.json(fallbackResponse)
+          error: "AI 평가 준비 중 오류가 발생했습니다"
+        });
       }
     }
 
@@ -125,4 +81,62 @@ export async function POST(request: NextRequest) {
     console.error("Error submitting drawing:", error)
     return NextResponse.json({ error: "Failed to submit drawing" }, { status: 500 })
   }
+}
+
+// 🚀 비동기 AI 평가 처리 함수
+async function processAIEvaluationAsync(roomId: string) {
+  try {
+    console.log("🚀 백그라운드 AI 평가 시작...");
+    
+    // 처리 중 상태를 모든 클라이언트에게 알림
+    GameManager.addGameEvent(roomId, "ai_evaluation_started", {
+      message: "AI 평가가 시작되었습니다.",
+      startTime: new Date().toISOString()
+    });
+
+    // AI 평가 수행
+    const { scores, evaluationResult } = await GameManager.scoreDrawings(roomId);
+    const winner = GameManager.getWinner(roomId);
+    
+    console.log("✅ 백그라운드 AI 채점 완료");
+    console.log("📈 최종 점수:", scores);
+    console.log("🏆 우승자:", winner);
+    
+    // ✅ 핵심: 모든 클라이언트에게 동시에 결과 전달
+    GameManager.addGameEvent(roomId, "round_completed", { 
+      scores, 
+      winner,
+      aiEvaluation: evaluationResult,
+      completedAt: new Date().toISOString()
+    });
+    
+    console.log("📡 결과 이벤트 발송 완료 - 모든 클라이언트가 동시에 수신");
+    
+  } catch (error) {
+    console.error("💥 백그라운드 AI 평가 실패:", error);
+    
+    // 실패 시 기본 결과로 대체
+    const fallbackScores = await generateFallbackScores(roomId);
+    const fallbackWinner = GameManager.getWinner(roomId);
+    
+    GameManager.addGameEvent(roomId, "round_completed", { 
+      scores: fallbackScores, 
+      winner: fallbackWinner,
+      aiEvaluation: null,
+      error: "AI 평가 실패, 기본 결과 적용",
+      completedAt: new Date().toISOString()
+    });
+  }
+}
+
+// 기본 점수 생성 함수
+async function generateFallbackScores(roomId: string): Promise<Record<string, number>> {
+  const players = GameManager.getRoomPlayers(roomId);
+  const scores: Record<string, number> = {};
+  
+  players.forEach(player => {
+    scores[player.id] = Math.floor(Math.random() * 30) + 70; // 70-100점
+  });
+  
+  return scores;
 }

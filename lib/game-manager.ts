@@ -716,10 +716,44 @@ export class GameManager {
   }
 
   static addGameEvent(roomId: string, eventType: string, eventData?: any): void {
-    const stmt = db.prepare(`
-      INSERT INTO game_events (room_id, event_type, event_data)
-      VALUES (?, ?, ?)
-    `)
-    stmt.run(roomId, eventType, eventData ? JSON.stringify(eventData) : null)
+    console.log(`📡 Adding game event:`, {
+      roomId,
+      eventType,
+      eventData: eventData ? JSON.stringify(eventData).substring(0, 200) + '...' : null
+    })
+    
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO game_events (room_id, event_type, event_data)
+        VALUES (?, ?, ?)
+      `)
+      const result = stmt.run(roomId, eventType, eventData ? JSON.stringify(eventData) : null)
+      
+      console.log(`✅ Game event added successfully:`, {
+        eventId: result.lastInsertRowid,
+        roomId,
+        eventType,
+        changes: result.changes
+      })
+      
+      // 검증: 생성된 이벤트 확인
+      const verifyEvent = db.prepare(`
+        SELECT * FROM game_events 
+        WHERE room_id = ? AND event_type = ? 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `).get(roomId, eventType)
+      
+      console.log(`🔍 Event verification:`, {
+        found: !!verifyEvent,
+        eventId: verifyEvent?.id,
+        eventType: verifyEvent?.event_type,
+        hasData: !!verifyEvent?.event_data
+      })
+      
+    } catch (error) {
+      console.error(`💥 Failed to add game event:`, error)
+      throw error
+    }
   }
 }

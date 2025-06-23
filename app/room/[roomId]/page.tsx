@@ -16,7 +16,8 @@ export default function RoomPage() {
   const { currentPhase, nickname, setRoomId, leaveRoom } = useGameStore()
   const { isConnected } = useServerEvents(roomId)
 
-  console.log("RoomPage render:", { roomId, currentPhase, nickname, isConnected })
+  console.log("🏠 RoomPage render:", { roomId, currentPhase, nickname, isConnected })
+  console.log("🏠 Current game state:", useGameStore.getState())
 
   useEffect(() => {
     if (roomId && nickname) {
@@ -133,15 +134,7 @@ export default function RoomPage() {
     <div className="min-h-screen bg-gray-50">
       {currentPhase === "lobby" && <LobbyScreen />}
       {currentPhase === "drawing" && <GameScreen />}
-      {currentPhase === "scoring" && (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">AI가 채점 중...</h2>
-            <p className="text-gray-600">잠시만 기다려주세요</p>
-          </div>
-        </div>
-      )}
+      {currentPhase === "scoring" && <GameScreen />}
       {currentPhase === "result" && <ResultScreen />}
     </div>
   )

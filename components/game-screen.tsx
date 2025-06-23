@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 
 export default function GameScreen() {
-  const { keyword, players, submitDrawing, timeLeft, currentPhase, leaveRoom, isHost, playerId, nickname } = useGameStore()
+  const { keyword, players, submitDrawing, timeLeft, currentPhase, leaveRoom, isHost, playerId, nickname, processingMessage } = useGameStore()
   const [canvasData, setCanvasData] = useState<string>("")
   const [currentColor, setCurrentColor] = useState("#000000")
   const [brushSize, setBrushSize] = useState(5)
@@ -86,6 +86,37 @@ export default function GameScreen() {
   const handleLeaveRoom = async () => {
     await leaveRoom()
     router.push("/")
+  }
+
+  // ✅ 개선: 처리 중 상태 표시
+  if (currentPhase === "scoring") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md mx-auto">
+          <CardContent className="p-8 text-center">
+            <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <h2 className="text-xl font-bold mb-2">🤖 AI 평가 중</h2>
+            <p className="text-gray-600 mb-4">
+              {processingMessage || "AI가 모든 작품을 꼼꼼히 평가하고 있습니다..."}
+            </p>
+            <div className="text-sm text-gray-500">
+              💡 모든 참가자가 동시에 결과를 받게 됩니다
+            </div>
+            <div className="mt-6">
+              <Button 
+                onClick={() => setShowLeaveAlert(true)} 
+                variant="outline" 
+                size="sm"
+                className="text-red-600 border-red-600 hover:bg-red-50"
+              >
+                <Home className="h-4 w-4 mr-1" />
+                방 나가기
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

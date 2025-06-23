@@ -25,7 +25,27 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
           `)
             .all(roomId)
 
-          console.log(`SSE: Room ${roomId} events:`, events)
+          console.log(`📡 SSE: Room ${roomId} events query result:`, events)
+          console.log(`📡 SSE: Events count:`, events?.length || 0)
+          console.log(`📡 SSE: Latest event:`, events?.[0])
+          
+          // 디버깅: 모든 이벤트 확인
+          if (events && events.length > 0) {
+            events.forEach((event, index) => {
+              console.log(`📡 SSE: Event ${index}:`, {
+                id: event.id,
+                room_id: event.room_id,
+                event_type: event.event_type,
+                event_data: event.event_data,
+                created_at: event.created_at
+              })
+            })
+          } else {
+            console.log(`📡 SSE: No events found for room ${roomId}`)
+            // 전체 이벤트 테이블 확인
+            const allEvents = db.prepare("SELECT * FROM game_events ORDER BY created_at DESC LIMIT 5").all()
+            console.log(`📡 SSE: Recent events in database:`, allEvents)
+          }
 
           // 현재 방 상태 가져오기
           const room = db.prepare("SELECT * FROM rooms WHERE id = ?").get(roomId) as any
@@ -53,12 +73,13 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
             events,
           }
 
-          // console.log(`SSE: Sending data for room ${roomId}:`, {
-          //   roomStatus: room?.status,
-          //   playerCount: players?.length,
-          //   eventCount: events?.length,
-          //   latestEvent: events?.[0]
-          // })
+          console.log(`📡 SSE: Sending data for room ${roomId}:`, {
+            roomStatus: room?.status,
+            playerCount: players?.length,
+            eventCount: events?.length,
+            latestEvent: events?.[0]?.event_type || 'none',
+            latestEventData: events?.[0]?.event_data || 'none'
+          })
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
         } catch (error) {
