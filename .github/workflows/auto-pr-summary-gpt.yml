@@ -1,4 +1,4 @@
-name: Auto PR Summary (GPT-based)
+name: Auto PR Summary (GPT v1+ + PAT)
 
 on:
   pull_request:
@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # merge-base 오류 방지
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -19,37 +21,42 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install openai
+          pip install openai requests
 
-      - name: Debug base branch
-        run: |
-          echo "📌 기준 브랜치 (base_ref): ${{ github.base_ref }}"
-
-      - name: Generate natural language summary using GPT
+      - name: Generate GPT summary and update PR
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_PAT: ${{ secrets.MY_GITHUB_PAT }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
-          # 기준 브랜치 자동 감지 후 diff 계산
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > changes.diff
 
           python3 <<EOF
-          import openai
           import os
+          import requests
+          from openai import OpenAI
 
-          openai.api_key = os.getenv("OPENAI_API_KEY")
+          # 환경 변수
+          api_key = os.getenv("OPENAI_API_KEY")
+          repo = os.getenv("REPO")
+          pr_number = os.getenv("PR_NUMBER")
+          pat = os.getenv("GITHUB_PAT")
+
+          client = OpenAI(api_key=api_key)
 
           with open("changes.diff", "r") as f:
-              diff_text = f.read()
+              diff = f.read()
 
           prompt = f"""다음은 git diff 결과입니다. 이 변경사항을 한국어로 간결하고 자연스럽게 요약해주세요. 
-          반드시 Pull Request 본문으로 바로 사용 가능하도록 작성해 주세요:
+          반드시 Pull Request 본문으로 바로 사용 가능하게끔 이쁘게 작성해 주세요:
 
-          {diff_text}
+          {diff}
           """
 
           try:
-              response = openai.ChatCompletion.create(
+              response = client.chat.completions.create(
                   model="gpt-4",
                   messages=[
                       {"role": "system", "content": "당신은 프로그래밍 변경사항을 정리하는 전문가입니다."},
@@ -58,27 +65,23 @@ jobs:
                   max_tokens=800
               )
 
-              summary = response["choices"][0]["message"]["content"]
+              summary = response.choices[0].message.content.strip()
 
-              with open("pr_body.txt", "w") as out:
-                  out.write("## 변경 요약 (GPT 기반)\n\n")
-                  out.write(summary.strip())
+              url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+              headers = {
+                  "Authorization": f"Bearer {pat}",
+                  "Accept": "application/vnd.github+json"
+              }
+              data = {
+                  "body": f"## 변경 요약 (GPT 기반)\n\n{summary}"
+              }
+
+              r = requests.patch(url, headers=headers, json=data)
+              r.raise_for_status()
+
+              print("✅ PR 설명이 성공적으로 업데이트되었습니다.")
 
           except Exception as e:
-              with open("pr_body.txt", "w") as out:
-                  out.write("GPT 요약 생성 중 오류 발생: " + str(e))
+              print("❌ 오류 발생:", e)
+              exit(1)
           EOF
-
-      - name: Install GitHub CLI
-        run: |
-          sudo apt update && sudo apt install gh -y
-
-      - name: Authenticate GitHub CLI
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-      - name: Update PR Description
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh pr edit "$PR_NUMBER" --repo "$REPO" --body "$(cat pr_body.txt)"
