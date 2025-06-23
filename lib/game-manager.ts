@@ -156,6 +156,9 @@ export class GameManager {
     return players;
   }
 
+  // 🔥 방별 타이머 관리를 위한 맵 추가
+  private static roomTimers: Map<string, NodeJS.Timeout> = new Map();
+
   static startGame(roomId: string): string | null {
     const keyword = keywords[Math.floor(Math.random() * keywords.length)];
 
@@ -174,7 +177,108 @@ export class GameManager {
     `);
     resetStmt.run(roomId);
 
+    // 🔥 서버 측 타이머 시작
+    this.startRoomTimer(roomId);
+
     return keyword;
+  }
+
+  // 🔥 서버 측 타이머 관리 함수 추가
+  private static startRoomTimer(roomId: string): void {
+    // 기존 타이머가 있다면 정리
+    if (this.roomTimers.has(roomId)) {
+      clearInterval(this.roomTimers.get(roomId));
+      this.roomTimers.delete(roomId);
+    }
+
+    console.log(`⏰ Starting server timer for room ${roomId}`);
+
+    const timer = setInterval(() => {
+      const room = this.getRoom(roomId);
+      if (!room || room.status !== "playing") {
+        console.log(
+          `⏰ Stopping timer for room ${roomId} - Room not found or not playing`
+        );
+        clearInterval(timer);
+        this.roomTimers.delete(roomId);
+        return;
+      }
+
+      const newTimeLeft = Math.max(0, room.time_left - 1);
+
+      // 데이터베이스 업데이트
+      const updateStmt = db.prepare(`
+        UPDATE rooms SET time_left = ? WHERE id = ?
+      `);
+      updateStmt.run(newTimeLeft, roomId);
+
+      console.log(
+        `⏰ Room ${roomId} timer: ${room.time_left} -> ${newTimeLeft}`
+      );
+
+      // 시간 종료 시 자동으로 채점 시작
+      if (newTimeLeft === 0) {
+        console.log(`⏰ Time's up for room ${roomId}, starting scoring...`);
+        clearInterval(timer);
+        this.roomTimers.delete(roomId);
+
+        // 채점 시작 (비동기)
+        setTimeout(() => {
+          this.startScoring(roomId);
+        }, 1000);
+      }
+    }, 1000);
+
+    this.roomTimers.set(roomId, timer);
+  }
+
+  // 🔥 타이머 정리 함수
+  private static clearRoomTimer(roomId: string): void {
+    if (this.roomTimers.has(roomId)) {
+      clearInterval(this.roomTimers.get(roomId));
+      this.roomTimers.delete(roomId);
+      console.log(`⏰ Cleared timer for room ${roomId}`);
+    }
+  }
+
+  // 🔥 채점 시작 함수 (타이머에서 호출)
+  private static async startScoring(roomId: string): Promise<void> {
+    console.log(`🎯 Auto-starting scoring for room ${roomId} (time's up)`);
+
+    try {
+      // 방 상태를 scoring으로 변경
+      db.prepare(`UPDATE rooms SET status = 'scoring' WHERE id = ?`).run(
+        roomId
+      );
+
+      // AI 평가 시작 이벤트 추가
+      this.addGameEvent(roomId, "ai_evaluation_started", {
+        reason: "time_up",
+        message: "시간이 종료되어 자동으로 채점이 시작됩니다.",
+      });
+
+      // 채점 진행
+      const { scores, evaluationResult } = await this.scoreDrawings(roomId);
+
+      // 승자 결정
+      const winner = this.getWinner(roomId);
+
+      // 방 상태를 finished로 변경
+      db.prepare(`UPDATE rooms SET status = 'finished' WHERE id = ?`).run(
+        roomId
+      );
+
+      // 게임 완료 이벤트 추가
+      this.addGameEvent(roomId, "round_completed", {
+        scores,
+        winner,
+        aiEvaluation: evaluationResult,
+      });
+
+      console.log(`✅ Auto-scoring completed for room ${roomId}`);
+    } catch (error) {
+      console.error(`💥 Auto-scoring failed for room ${roomId}:`, error);
+    }
   }
 
   static submitDrawing(
@@ -804,6 +908,9 @@ export class GameManager {
     resetStmt.run(roomId);
     console.log(`All players in room ${roomId} reset for next round`);
 
+    // 🔥 다음 라운드에서도 타이머 시작
+    this.startRoomTimer(roomId);
+
     // 게임 이벤트 추가
     this.addGameEvent(roomId, "next_round_started", {
       keyword,
@@ -814,6 +921,9 @@ export class GameManager {
   }
 
   static deleteRoom(roomId: string): void {
+    // 🔥 방 삭제 시 타이머도 정리
+    this.clearRoomTimer(roomId);
+
     db.prepare("DELETE FROM drawings WHERE room_id = ?").run(roomId);
     db.prepare("DELETE FROM players WHERE room_id = ?").run(roomId);
     db.prepare("DELETE FROM rooms WHERE id = ?").run(roomId);

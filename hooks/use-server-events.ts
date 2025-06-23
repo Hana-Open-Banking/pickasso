@@ -301,18 +301,19 @@ export function useServerEvents(roomId: string) {
       gameTimerRef.current = null;
     }
 
-    console.log("Starting game timer...");
+    console.log("🔥 Starting SINGLE game timer...");
     const timer = setInterval(() => {
       const currentState = useGameStore.getState();
       const currentTime = currentState.timeLeft;
-      console.log(`Timer tick: ${currentTime} -> ${currentTime - 1}`);
+      console.log(`⏰ Client timer tick: ${currentTime} -> ${currentTime - 1}`);
 
       if (currentTime > 0) {
         setTimeLeft(currentTime - 1);
       } else {
+        console.log("🔥 Client timer reached 0, clearing interval");
         clearInterval(timer);
         gameTimerRef.current = null;
-        // 시간 종료 시 자동 제출
+        // 시간 종료 시 자동 제출 (서버에서도 처리하지만 클라이언트에서도 보장)
         if (
           currentState.canvasData &&
           currentState.currentPhase === "drawing"
@@ -389,39 +390,34 @@ export function useServerEvents(roomId: string) {
                 if (data.room.current_keyword) {
                   setKeyword(data.room.current_keyword);
                 }
+                // 🔥 서버에서 받은 time_left로 초기 동기화 (한 번만)
                 if (data.room.time_left !== undefined) {
-                  console.log(
-                    `⏰ Setting time from server: ${data.room.time_left}`
-                  );
-                  setTimeLeft(data.room.time_left);
+                  const currentTime = useGameStore.getState().timeLeft;
+                  if (currentTime === 60 && data.room.time_left < 60) {
+                    console.log(
+                      `⏰ Initial sync: ${currentTime} -> ${data.room.time_left}`
+                    );
+                    setTimeLeft(data.room.time_left);
+                  }
                 }
-                console.log("Starting timer for drawing phase");
-                startGameTimer();
+                console.log(
+                  "Drawing phase detected, waiting for game event to start timer"
+                );
               } else if (currentPhase === "result") {
                 console.log("🎯 Room finished, preparing for results...");
                 clearGameTimer();
-                // result 상태로 변경되었을 때는 이벤트 처리를 기다림
                 isProcessingResultsRef.current = false;
               } else {
                 clearGameTimer();
               }
             } else if (currentPhase === "drawing") {
-              // 같은 drawing 단계에서도 서버 시간과 동기화
-              if (data.room.time_left !== undefined) {
-                const currentTime = useGameStore.getState().timeLeft;
-                if (Math.abs(currentTime - data.room.time_left) > 2) {
-                  console.log(
-                    `⏰ Timer sync during drawing: ${currentTime} -> ${data.room.time_left}`
-                  );
-                  setTimeLeft(data.room.time_left);
-                }
-              }
+              // 🔥 서버 시간 동기화 비활성화 (타이머 리셋 방지)
+              console.log("Drawing phase continues, timer should be running");
 
               if (!gameTimerRef.current) {
                 console.log(
-                  "Timer not running during drawing phase, restarting..."
+                  "Timer not running during drawing phase, but NOT restarting automatically"
                 );
-                startGameTimer();
               }
             }
           }
@@ -435,16 +431,34 @@ export function useServerEvents(roomId: string) {
             if (latestEvent.event_type === "game_started") {
               const eventData = JSON.parse(latestEvent.event_data || "{}");
               console.log("Processing game_started event:", eventData);
+
+              // 🔥 타이머가 이미 실행 중이면 중복 시작 방지
+              if (gameTimerRef.current) {
+                console.log("🚫 Timer already running, skipping game_started");
+                return;
+              }
+
               setPhase("drawing");
               setKeyword(eventData.keyword);
               setTimeLeft(60);
+              console.log("⏰ Starting timer from game_started event");
               startGameTimer();
             } else if (latestEvent.event_type === "next_round_started") {
               const eventData = JSON.parse(latestEvent.event_data || "{}");
               console.log("Processing next_round_started event:", eventData);
+
+              // 🔥 타이머가 이미 실행 중이면 중복 시작 방지
+              if (gameTimerRef.current) {
+                console.log(
+                  "🚫 Timer already running, skipping next_round_started"
+                );
+                return;
+              }
+
               setPhase("drawing");
               setKeyword(eventData.keyword);
               setTimeLeft(60);
+              console.log("⏰ Starting timer from next_round_started event");
               startGameTimer();
             } else if (latestEvent.event_type === "ai_evaluation_started") {
               const eventData = JSON.parse(latestEvent.event_data);
