@@ -77,12 +77,13 @@ export function useServerEvents(roomId: string) {
 
     eventSource.onmessage = (event) => {
       try {
-        const data: ServerEvent = JSON.parse(event.data)
+        const data = JSON.parse(event.data)
         console.log("SSE Event received:", data)
 
         if (data.type === "game_state") {
           // 플레이어 상태 업데이트
           if (data.players) {
+            console.log("Updating players from game state:", data.players)
             setPlayers(data.players)
           }
 
@@ -170,20 +171,7 @@ export function useServerEvents(roomId: string) {
               if (currentState.playerId === eventData.newHostId) {
                 // 내가 새로운 방장이 된 경우
                 console.log("I am the new host!")
-                alert(`🎉 축하합니다! 방장이 되었습니다!`)
                 currentState.setIsHost(true)
-              } else {
-                // 다른 사람이 방장이 된 경우
-                console.log(`New host is: ${eventData.newHostNickname || eventData.newHostId}`)
-                if (eventData.newHostNickname) {
-                  alert(`방장이 ${eventData.newHostNickname}님에게 위임되었습니다.`)
-                }
-              }
-              
-              // 플레이어 목록 업데이트
-              if (data.players) {
-                console.log("Updating players list after host transfer:", data.players)
-                setPlayers(data.players)
               }
             } else if (latestEvent.event_type === "host_assigned") {
               // 자동으로 방장이 설정된 경우
@@ -197,30 +185,7 @@ export function useServerEvents(roomId: string) {
               if (currentState.playerId === eventData.newHostId) {
                 // 내가 자동으로 방장이 된 경우
                 console.log("I am the auto-assigned host!")
-                alert(`🎉 방장이 없어서 자동으로 방장이 되었습니다!`)
                 currentState.setIsHost(true)
-              } else {
-                // 다른 사람이 자동으로 방장이 된 경우
-                console.log(`Auto-assigned host is: ${eventData.newHostNickname || eventData.newHostId}`)
-                if (eventData.newHostNickname) {
-                  alert(`${eventData.newHostNickname}님이 자동으로 방장이 되었습니다.`)
-                }
-              }
-              
-              // 플레이어 목록 업데이트
-              if (data.players) {
-                console.log("Updating players list after host assignment:", data.players)
-                setPlayers(data.players)
-              }
-            } else if (latestEvent.event_type === "player_left") {
-              // 일반 참여자가 나간 경우
-              const eventData = JSON.parse(latestEvent.event_data || "{}")
-              console.log("Player left event data:", eventData)
-              
-              // 플레이어 목록 업데이트
-              if (data.players) {
-                console.log("Updating players list after player left:", data.players)
-                setPlayers(data.players)
               }
             }
           }
