@@ -53,7 +53,7 @@ const MODEL_CONFIG = {
     maxTokens: 4096
   },
   claude: {
-    model: "claude-3-opus-20240229",
+    model: "claude-3-5-haiku-20241022",
     maxRetries: 3,
     timeout: 30000,
     temperature: 0.7,
