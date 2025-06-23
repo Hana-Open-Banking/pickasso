@@ -61,6 +61,9 @@ Pickasso는 Next.js와 TypeScript로 구축된 실시간 멀티플레이어 그�
 
    # alert 설치
    npm install @radix-ui/react-alert-dialog
+
+   # Gemini
+   npm install @google/generative-ai
    ```
 
 3. **개발 서버 실행**
