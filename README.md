@@ -58,6 +58,9 @@ Pickasso는 Next.js와 TypeScript로 구축된 실시간 멀티플레이어 그�
    pnpm install
    # 또는
    npm install
+
+   # alert 설치
+   npm install @radix-ui/react-alert-dialog
    ```
 
 3. **개발 서버 실행**
