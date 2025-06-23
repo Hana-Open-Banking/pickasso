@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 
 export default function GameScreen() {
-  const { keyword, players, submitDrawing, timeLeft, currentPhase, leaveRoom, isHost, playerId, nickname } = useGameStore()
+  const { keyword, players, submitDrawing, timeLeft, currentPhase, leaveRoom, isHost, playerId, nickname, processingMessage } = useGameStore()
   const [canvasData, setCanvasData] = useState<string>("")
   const [currentColor, setCurrentColor] = useState("#000000")
   const [brushSize, setBrushSize] = useState(5)
@@ -38,13 +38,39 @@ export default function GameScreen() {
   }, [currentPhase])
 
   const handleSubmit = async () => {
-    console.log("Submit button clicked, canvasData length:", canvasData?.length || 0)
+    console.log("제출 버튼 클릭, Canvas 데이터 길이:", canvasData?.length || 0)
+    
     if (!isSubmitted) {
-      console.log("Submitting drawing...")
-      setIsSubmitted(true)
-      await submitDrawing(canvasData)
+      try {
+        // Canvas에서 base64 이미지 데이터 추출
+        const canvas = document.querySelector('canvas') as HTMLCanvasElement
+        let imageData = canvasData
+        
+        if (canvas && (canvas as any).getImageData) {
+          // Canvas 컴포넌트의 getImageData 함수 사용
+          imageData = (canvas as any).getImageData()
+          console.log("📸 Canvas에서 base64 데이터 추출 완료, 길이:", imageData?.length || 0)
+        }
+        
+        if (!imageData || imageData.length === 0) {
+          console.warn("⚠️  제출할 그림 데이터가 없습니다")
+          // 빈 Canvas라도 제출 허용 (흰색 배경)
+          if (canvas) {
+            imageData = canvas.toDataURL('image/png').split(',')[1]
+          }
+        }
+        
+        console.log("🎨 그림 제출 중...")
+        setIsSubmitted(true)
+        await submitDrawing(imageData)
+        console.log("✅ 그림 제출 완료!")
+        
+      } catch (error) {
+        console.error("💥 그림 제출 중 오류 발생:", error)
+        setIsSubmitted(false) // 오류 시 다시 제출 가능하도록
+      }
     } else {
-      console.log("Already submitted")
+      console.log("이미 제출 완료됨")
     }
   }
 
@@ -60,6 +86,37 @@ export default function GameScreen() {
   const handleLeaveRoom = async () => {
     await leaveRoom()
     router.push("/")
+  }
+
+  // ✅ 개선: 처리 중 상태 표시
+  if (currentPhase === "scoring") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md mx-auto">
+          <CardContent className="p-8 text-center">
+            <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <h2 className="text-xl font-bold mb-2">🤖 AI 평가 중</h2>
+            <p className="text-gray-600 mb-4">
+              {processingMessage || "AI가 모든 작품을 꼼꼼히 평가하고 있습니다..."}
+            </p>
+            <div className="text-sm text-gray-500">
+              💡 모든 참가자가 동시에 결과를 받게 됩니다
+            </div>
+            <div className="mt-6">
+              <Button 
+                onClick={() => setShowLeaveAlert(true)} 
+                variant="outline" 
+                size="sm"
+                className="text-red-600 border-red-600 hover:bg-red-50"
+              >
+                <Home className="h-4 w-4 mr-1" />
+                방 나가기
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

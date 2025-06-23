@@ -8,6 +8,21 @@ export interface Player {
   score: number
 }
 
+// AI 평가 결과 인터페이스
+export interface AIEvaluation {
+  rankings: Array<{
+    rank: number
+    playerId: string
+    score: number
+  }>
+  comments: Array<{
+    playerId: string
+    comment: string
+  }>
+  summary?: string // 전체 평가 해설
+  evaluationCriteria?: string // 평가 기준 설명
+}
+
 export interface GameState {
   // 기본 정보
   nickname: string
@@ -25,6 +40,8 @@ export interface GameState {
   canvasData: string
   scores: Record<string, number>
   winner: string
+  aiEvaluation: AIEvaluation | null
+  processingMessage: string
 
   // 액션들
   setNickname: (nickname: string) => void
@@ -38,6 +55,7 @@ export interface GameState {
   setCanvasData: (data: string) => void
   setScores: (scores: Record<string, number>) => void
   setWinner: (winner: string) => void
+  setAIEvaluation: (evaluation: AIEvaluation | null) => void
 
   // 서버 액션들
   createRoom: () => Promise<string | null>
@@ -63,13 +81,20 @@ export const useGameStore = create<GameState>((set, get) => {
     canvasData: "",
     scores: {},
     winner: "",
+    aiEvaluation: null,
+    processingMessage: "",
 
     // 기본 setter들
     setNickname: (nickname) => set({ nickname }),
     setRoomId: (roomId) => set({ roomId }),
     setPlayerId: (playerId) => set({ playerId }),
     setIsHost: (isHost) => set({ isHost }),
-    setPhase: (currentPhase) => set({ currentPhase }),
+    setPhase: (currentPhase) => {
+    console.log("🔄 Phase change:", currentPhase)
+    console.log("🔄 Current state before phase change:", get())
+    set({ currentPhase })
+    console.log("🔄 State after phase change:", get())
+  },
     setPlayers: (players) => {
       const state = get()
       // 현재 플레이어의 방장 상태 업데이트
@@ -97,8 +122,53 @@ export const useGameStore = create<GameState>((set, get) => {
     setKeyword: (keyword) => set({ keyword }),
     setTimeLeft: (timeLeft) => set({ timeLeft }),
     setCanvasData: (canvasData) => set({ canvasData }),
-    setScores: (scores) => set({ scores }),
-    setWinner: (winner) => set({ winner }),
+      setScores: (scores) => {
+    console.log("🎯 Setting scores:", scores)
+    console.log("🎯 Previous state:", get().scores)
+    set({ scores: { ...scores } })  // 불변성 보장
+    console.log("🎯 New state:", get().scores)
+  },
+  setWinner: (winner) => {
+    console.log("🏆 Setting winner:", winner)
+    console.log("🏆 Previous state:", get().winner)
+    set({ winner })
+    console.log("🏆 New state:", get().winner)
+  },
+  setAIEvaluation: (aiEvaluation) => {
+    console.log("🤖 Setting AI evaluation:", aiEvaluation)
+    console.log("🤖 AI rankings:", aiEvaluation?.rankings)
+    console.log("🤖 AI comments:", aiEvaluation?.comments)
+    console.log("🤖 AI summary:", aiEvaluation?.summary)
+    console.log("🤖 AI evaluation criteria:", aiEvaluation?.evaluationCriteria)
+    console.log("🤖 Previous state:", get().aiEvaluation)
+    
+    if (aiEvaluation) {
+      const newAiEvaluation = {
+        rankings: aiEvaluation.rankings ? [...aiEvaluation.rankings.map(r => ({ ...r }))] : [],
+        comments: aiEvaluation.comments ? [...aiEvaluation.comments.map(c => ({ ...c }))] : [],
+        summary: aiEvaluation.summary || undefined,
+        evaluationCriteria: aiEvaluation.evaluationCriteria || undefined
+      }
+      console.log("🤖 새로 설정될 AI 평가 객체:", newAiEvaluation)
+      set({ aiEvaluation: newAiEvaluation })
+    } else {
+      console.log("🤖 AI 평가를 null로 설정")
+      set({ aiEvaluation: null })
+    }
+    
+    // 즉시 검증
+    setTimeout(() => {
+      const currentState = get().aiEvaluation
+      console.log("🤖 설정 후 실제 상태:", currentState)
+      console.log("🤖 설정 성공 여부:", {
+        isSet: !!currentState,
+        hasRankings: !!currentState?.rankings,
+        hasComments: !!currentState?.comments,
+        hasSummary: !!currentState?.summary,
+        hasEvaluationCriteria: !!currentState?.evaluationCriteria
+      })
+    }, 50)
+  },
 
     // 서버 액션들
     createRoom: async () => {
@@ -215,6 +285,7 @@ export const useGameStore = create<GameState>((set, get) => {
       }
 
       try {
+        // ✅ 개선: 제출 후 즉시 "처리 중" 상태로 변경
         set({ currentPhase: "scoring" })
 
         const response = await fetch("/api/drawings/submit", {
@@ -231,18 +302,33 @@ export const useGameStore = create<GameState>((set, get) => {
         console.log("Submit response:", data)
 
         if (data.success && data.allSubmitted) {
-          console.log("All players submitted, updating to result phase")
-          set({
-            scores: data.scores,
-            winner: data.winner,
-            currentPhase: "result",
-          })
+          if (data.processing) {
+            // ✅ 개선: 모든 사용자가 동일하게 처리 중 상태 표시
+            console.log("🤖 AI 평가 중... SSE를 통해 결과를 기다립니다");
+            console.log("💡 메시지:", data.message);
+            
+            // 처리 중 상태 유지 (SSE에서 결과를 받을 때까지)
+            set({ 
+              currentPhase: "scoring",
+              processingMessage: data.message || "AI가 작품을 평가하고 있습니다..."
+            })
+          } else {
+            // 레거시 코드 (혹시 모를 호환성을 위해 유지)
+            console.log("⚠️ 레거시 응답 형식 감지");
+            set({
+              scores: data.scores || {},
+              winner: data.winner || "",
+              aiEvaluation: data.aiEvaluation || null,
+              currentPhase: "result",
+            })
+          }
         } else if (data.success) {
-          console.log("Drawing submitted, waiting for other players")
+          console.log("그림 제출 완료, 다른 플레이어 대기 중...")
           // 다른 플레이어들이 제출할 때까지 대기
         }
       } catch (error) {
         console.error("Error submitting drawing:", error)
+        set({ currentPhase: "drawing" }) // 오류 시 다시 그리기 단계로
       }
     },
 
@@ -270,6 +356,8 @@ export const useGameStore = create<GameState>((set, get) => {
             canvasData: "",
             scores: {},
             winner: "",
+            aiEvaluation: null,
+            processingMessage: "",
           })
           console.log("Next round started successfully")
         }
@@ -291,6 +379,8 @@ export const useGameStore = create<GameState>((set, get) => {
         canvasData: "",
         scores: {},
         winner: "",
+        aiEvaluation: null,
+        processingMessage: "",
       })
     },
 
@@ -322,6 +412,7 @@ export const useGameStore = create<GameState>((set, get) => {
             canvasData: "",
             scores: {},
             winner: "",
+            aiEvaluation: null,
           })
         } else {
           console.error("Failed to leave room:", data.error)

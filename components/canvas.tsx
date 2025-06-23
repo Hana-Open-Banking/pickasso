@@ -9,6 +9,12 @@ interface CanvasProps {
   disabled?: boolean
 }
 
+// Base64 이미지 데이터 추출 함수
+export function getCanvasImageData(canvas: HTMLCanvasElement): string {
+  // 'data:image/png;base64,' 헤더 제거하고 순수 base64 데이터만 반환
+  return canvas.toDataURL('image/png').split(',')[1];
+}
+
 export default function Canvas({ color, brushSize, onCanvasChange, disabled }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -132,10 +138,11 @@ export default function Canvas({ color, brushSize, onCanvasChange, disabled }: C
     }
   }, [])
 
-  // 전역에서 clearCanvas 함수에 접근할 수 있도록
+  // 전역에서 clearCanvas 함수와 getImageData 함수에 접근할 수 있도록
   useEffect(() => {
     if (canvasRef.current) {
       ;(canvasRef.current as any).clearCanvas = clearCanvas
+      ;(canvasRef.current as any).getImageData = () => getCanvasImageData(canvasRef.current!)
     }
   }, [])
 

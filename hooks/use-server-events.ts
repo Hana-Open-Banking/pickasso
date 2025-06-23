@@ -12,12 +12,49 @@ interface ServerEvent {
 
 export function useServerEvents(roomId: string) {
   const [isConnected, setIsConnected] = useState(false)
-  const { setPlayers, setPhase, setKeyword, setScores, setWinner, setTimeLeft } = useGameStore()
+  const { setPlayers, setPhase, setKeyword, setScores, setWinner, setTimeLeft, setAIEvaluation } = useGameStore()
   
   // 타이머 관리를 위한 ref 사용
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastPhaseRef = useRef<string>("")
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // ✅ 게임 결과 직접 조회 함수 추가
+  const fetchGameResults = async (roomId: string) => {
+    try {
+      console.log("🔍 Fetching game results for room:", roomId)
+      const response = await fetch(`/api/rooms/${roomId}/results`)
+      if (response.ok) {
+        const results = await response.json()
+        console.log("🎊 Game results fetched:", results)
+        
+        if (results.aiEvaluation) {
+          console.log("🤖 Setting AI evaluation:", results.aiEvaluation)
+          console.log("🔄 Before setting AI evaluation from API, current state:", useGameStore.getState().aiEvaluation)
+          setAIEvaluation(results.aiEvaluation)
+          console.log("🔄 After setting AI evaluation from API, state should be:", results.aiEvaluation)
+        }
+        
+        if (results.scores) {
+          console.log("🏆 Setting scores:", results.scores)
+          console.log("🔄 Before setting scores from API, current state:", useGameStore.getState().scores)
+          setScores(results.scores)
+          console.log("🔄 After setting scores from API, state should be:", results.scores)
+        }
+        
+        if (results.winner) {
+          console.log("👑 Setting winner:", results.winner)
+          console.log("🔄 Before setting winner from API, current state:", useGameStore.getState().winner)
+          setWinner(results.winner)
+          console.log("🔄 After setting winner from API, state should be:", results.winner)
+        }
+      } else {
+        console.error("Failed to fetch game results:", response.status)
+      }
+    } catch (error) {
+      console.error("Error fetching game results:", error)
+    }
+  }
 
   const startGameTimer = () => {
     // 기존 타이머가 있다면 정리
@@ -78,7 +115,11 @@ export function useServerEvents(roomId: string) {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        console.log("SSE Event received:", data)
+        console.log("📡 SSE Event received:", data)
+        console.log("📡 Event type:", data.type)
+        console.log("📡 Room data:", data.room)
+        console.log("📡 Players data:", data.players)
+        console.log("📡 Events data:", data.events)
 
         if (data.type === "game_state") {
           // 플레이어 상태 업데이트
@@ -110,6 +151,23 @@ export function useServerEvents(roomId: string) {
                 }
                 // drawing 단계로 변경되었을 때만 타이머 시작
                 startGameTimer()
+              } else if (currentPhase === "result") {
+                // ✅ 개선: finished 상태일 때 직접 결과 조회
+                console.log("🎯 Room finished, fetching results directly...")
+                
+                // SSE 이벤트와 API 결과 조회를 병렬로 실행
+                fetchGameResults(roomId)
+                
+                // 지연된 결과 조회 (SSE 이벤트가 늦게 올 경우 대비)
+                setTimeout(() => {
+                  const currentState = useGameStore.getState()
+                  if (!currentState.aiEvaluation && !currentState.scores) {
+                    console.log("🔄 지연된 결과 조회 시도...")
+                    fetchGameResults(roomId)
+                  }
+                }, 2000)
+                
+                clearGameTimer()
               } else {
                 // 다른 단계로 변경되었을 때 타이머 정리
                 clearGameTimer()
@@ -119,9 +177,11 @@ export function useServerEvents(roomId: string) {
 
           // 최근 이벤트 처리
           if (data.events && data.events.length > 0) {
-            console.log("Recent events:", data.events)
+            console.log("📨 Recent events:", data.events)
             const latestEvent = data.events[0]
-            console.log("Latest event:", latestEvent)
+            console.log("📨 Latest event:", latestEvent)
+            console.log("📨 Event type:", latestEvent.event_type)
+            console.log("📨 Event data raw:", latestEvent.event_data)
             
             if (latestEvent.event_type === "game_started") {
               // 게임 시작 이벤트 처리
@@ -141,12 +201,106 @@ export function useServerEvents(roomId: string) {
               setTimeLeft(60)
               startGameTimer() // 타이머 시작
               console.log("Next round started via SSE:", eventData)
-            } else if (latestEvent.event_type === "round_completed") {
+            } else if (latestEvent.event_type === "ai_evaluation_started") {
               const eventData = JSON.parse(latestEvent.event_data)
-              setScores(eventData.scores)
-              setWinner(eventData.winner)
+              console.log("🤖 AI 평가 시작 알림:", eventData)
+              
+              // 모든 사용자에게 동일한 처리 중 상태 표시
+              setPhase("scoring")
+              // UI에서 로딩 메시지 표시를 위한 상태 업데이트
+              
+            } else if (latestEvent.event_type === "round_completed") {
+              try {
+                console.log("🎊 라운드 완료 이벤트 원본 데이터:", latestEvent.event_data?.substring(0, 500) + '...')
+                
+                const eventData = JSON.parse(latestEvent.event_data)
+                console.log("🎊 라운드 완료 이벤트 처리 (모든 사용자 동시 수신):", eventData)
+                console.log("🎊 Scores:", eventData.scores)
+                console.log("🎊 Winner:", eventData.winner)
+                console.log("🎊 AI Evaluation:", eventData.aiEvaluation)
+                console.log("🎊 AI Rankings:", eventData.aiEvaluation?.rankings)
+                console.log("🎊 AI Comments:", eventData.aiEvaluation?.comments)
+                console.log("🎊 AI Summary:", eventData.aiEvaluation?.summary)
+                console.log("🎊 AI Evaluation Criteria:", eventData.aiEvaluation?.evaluationCriteria)
+                
+                // AI 평가 데이터 상세 분석
+                if (eventData.aiEvaluation) {
+                  console.log("🤖 AI 평가 상세 분석:", {
+                    aiEvaluationType: typeof eventData.aiEvaluation,
+                    aiEvaluationKeys: Object.keys(eventData.aiEvaluation),
+                    rankingsIsArray: Array.isArray(eventData.aiEvaluation.rankings),
+                    commentsIsArray: Array.isArray(eventData.aiEvaluation.comments),
+                    rankingsLength: eventData.aiEvaluation.rankings?.length || 0,
+                    commentsLength: eventData.aiEvaluation.comments?.length || 0,
+                    hasSummary: !!eventData.aiEvaluation.summary,
+                    hasEvaluationCriteria: !!eventData.aiEvaluation.evaluationCriteria
+                  })
+                } else {
+                  console.warn("⚠️ AI 평가 데이터가 null 또는 undefined입니다!")
+                  // AI 평가 데이터가 없을 때 대안 조회
+                  setTimeout(() => {
+                    console.log("🔍 AI 평가 데이터 없음 - 대안 조회 시도...")
+                    fetchGameResults(roomId)
+                  }, 1000)
+                }
+                
+                // ✅ 개선: 모든 사용자가 정확히 같은 시점에 결과 수신
+                console.log("🔄 Before setting scores, current state:", useGameStore.getState().scores)
+                setScores(eventData.scores || {})
+                setTimeout(() => {
+                  console.log("🔄 After setting scores, actual state:", useGameStore.getState().scores)
+                }, 100)
+                
+                console.log("🔄 Before setting winner, current state:", useGameStore.getState().winner)
+                setWinner(eventData.winner || null)
+                setTimeout(() => {
+                  console.log("🔄 After setting winner, actual state:", useGameStore.getState().winner)
+                }, 100)
+                
+                console.log("🔄 Before setting AI evaluation, current state:", useGameStore.getState().aiEvaluation)
+                setAIEvaluation(eventData.aiEvaluation || null)
+                setTimeout(() => {
+                  console.log("🔄 After setting AI evaluation, actual state:", useGameStore.getState().aiEvaluation)
+                  
+                  // AI 평가 데이터가 여전히 없으면 추가 시도
+                  if (!useGameStore.getState().aiEvaluation && eventData.scores) {
+                    console.log("🔍 AI 평가 데이터 여전히 없음 - 재시도...")
+                    setTimeout(() => {
+                      fetchGameResults(roomId)
+                    }, 2000)
+                  }
+                }, 100)
+                
+                setPhase("result")
+                clearGameTimer()
+                
+                console.log("✅ 모든 사용자 동등한 게임 상태 업데이트 완료")
+                console.log("✅ Updated game state:", {
+                  scores: eventData.scores,
+                  winner: eventData.winner,
+                  aiEvaluation: eventData.aiEvaluation,
+                  phase: "result"
+                })
+              } catch (parseError) {
+                console.error("💥 round_completed 이벤트 파싱 오류:", parseError)
+                console.error("💥 원본 이벤트 데이터:", latestEvent.event_data)
+                console.error("💥 파싱 오류 상세:", {
+                  name: parseError.name,
+                  message: parseError.message,
+                  stack: parseError.stack?.substring(0, 200)
+                })
+                // 파싱 실패 시에도 최소한 result 화면으로 전환
+                setPhase("result")
+                clearGameTimer()
+              }
+              
+            } else if (latestEvent.event_type === "ai_evaluation_failed") {
+              const eventData = JSON.parse(latestEvent.event_data)
+              console.log("💥 AI 평가 실패 알림:", eventData)
+              
+              // 실패 시에도 모든 사용자에게 동일한 처리
               setPhase("result")
-              clearGameTimer()
+              // 오류 메시지 표시
             } else if (latestEvent.event_type === "host_left") {
               // 방장이 나간 경우 - 홈으로 이동
               console.log("Host left the room, redirecting to home")
@@ -195,9 +349,11 @@ export function useServerEvents(roomId: string) {
       }
     }
 
-    eventSource.onerror = () => {
+    eventSource.onerror = (error) => {
+      console.error("💥 SSE Error:", error)
+      console.error("💥 SSE ReadyState:", eventSource.readyState)
+      console.error("💥 SSE URL:", eventSource.url)
       setIsConnected(false)
-      console.log("SSE Error, attempting to reconnect...")
       
       // 재연결 시도
       if (reconnectTimeoutRef.current) {
@@ -205,7 +361,7 @@ export function useServerEvents(roomId: string) {
       }
       
       reconnectTimeoutRef.current = setTimeout(() => {
-        console.log("Attempting to reconnect SSE...")
+        console.log("🔄 Attempting to reconnect SSE...")
         connectSSE()
       }, 3000)
     }
