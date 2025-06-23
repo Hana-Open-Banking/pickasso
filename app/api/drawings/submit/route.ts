@@ -103,6 +103,7 @@ async function processAIEvaluationAsync(roomId: string) {
     console.log("🏆 우승자:", winner);
     
     // ✅ 핵심: 모든 클라이언트에게 동시에 결과 전달
+    console.log("📡 게임 이벤트 추가 시작...");
     GameManager.addGameEvent(roomId, "round_completed", { 
       scores, 
       winner,
@@ -111,6 +112,32 @@ async function processAIEvaluationAsync(roomId: string) {
     });
     
     console.log("📡 결과 이벤트 발송 완료 - 모든 클라이언트가 동시에 수신");
+    
+    // 검증: 이벤트가 실제로 저장되었는지 확인
+    setTimeout(() => {
+      try {
+        const db = require("@/lib/db").default;
+        const verifyEvents = db.prepare(`
+          SELECT * FROM game_events 
+          WHERE room_id = ? AND event_type = 'round_completed'
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `).all(roomId);
+        
+        console.log("🔍 백그라운드 검증 - 저장된 이벤트:", {
+          roomId,
+          eventsFound: verifyEvents.length,
+          latestEvent: verifyEvents[0] ? {
+            id: verifyEvents[0].id,
+            event_type: verifyEvents[0].event_type,
+            has_data: !!verifyEvents[0].event_data,
+            data_length: verifyEvents[0].event_data?.length || 0
+          } : null
+        });
+      } catch (verifyError) {
+        console.error("💥 백그라운드 검증 실패:", verifyError);
+      }
+    }, 1000);
     
   } catch (error) {
     console.error("💥 백그라운드 AI 평가 실패:", error);

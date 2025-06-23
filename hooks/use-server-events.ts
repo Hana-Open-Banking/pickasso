@@ -154,7 +154,19 @@ export function useServerEvents(roomId: string) {
               } else if (currentPhase === "result") {
                 // ✅ 개선: finished 상태일 때 직접 결과 조회
                 console.log("🎯 Room finished, fetching results directly...")
+                
+                // SSE 이벤트와 API 결과 조회를 병렬로 실행
                 fetchGameResults(roomId)
+                
+                // 지연된 결과 조회 (SSE 이벤트가 늦게 올 경우 대비)
+                setTimeout(() => {
+                  const currentState = useGameStore.getState()
+                  if (!currentState.aiEvaluation && !currentState.scores) {
+                    console.log("🔄 지연된 결과 조회 시도...")
+                    fetchGameResults(roomId)
+                  }
+                }, 2000)
+                
                 clearGameTimer()
               } else {
                 // 다른 단계로 변경되었을 때 타이머 정리
@@ -199,6 +211,8 @@ export function useServerEvents(roomId: string) {
               
             } else if (latestEvent.event_type === "round_completed") {
               try {
+                console.log("🎊 라운드 완료 이벤트 원본 데이터:", latestEvent.event_data?.substring(0, 500) + '...')
+                
                 const eventData = JSON.parse(latestEvent.event_data)
                 console.log("🎊 라운드 완료 이벤트 처리 (모든 사용자 동시 수신):", eventData)
                 console.log("🎊 Scores:", eventData.scores)
@@ -206,19 +220,56 @@ export function useServerEvents(roomId: string) {
                 console.log("🎊 AI Evaluation:", eventData.aiEvaluation)
                 console.log("🎊 AI Rankings:", eventData.aiEvaluation?.rankings)
                 console.log("🎊 AI Comments:", eventData.aiEvaluation?.comments)
+                console.log("🎊 AI Summary:", eventData.aiEvaluation?.summary)
+                console.log("🎊 AI Evaluation Criteria:", eventData.aiEvaluation?.evaluationCriteria)
+                
+                // AI 평가 데이터 상세 분석
+                if (eventData.aiEvaluation) {
+                  console.log("🤖 AI 평가 상세 분석:", {
+                    aiEvaluationType: typeof eventData.aiEvaluation,
+                    aiEvaluationKeys: Object.keys(eventData.aiEvaluation),
+                    rankingsIsArray: Array.isArray(eventData.aiEvaluation.rankings),
+                    commentsIsArray: Array.isArray(eventData.aiEvaluation.comments),
+                    rankingsLength: eventData.aiEvaluation.rankings?.length || 0,
+                    commentsLength: eventData.aiEvaluation.comments?.length || 0,
+                    hasSummary: !!eventData.aiEvaluation.summary,
+                    hasEvaluationCriteria: !!eventData.aiEvaluation.evaluationCriteria
+                  })
+                } else {
+                  console.warn("⚠️ AI 평가 데이터가 null 또는 undefined입니다!")
+                  // AI 평가 데이터가 없을 때 대안 조회
+                  setTimeout(() => {
+                    console.log("🔍 AI 평가 데이터 없음 - 대안 조회 시도...")
+                    fetchGameResults(roomId)
+                  }, 1000)
+                }
                 
                 // ✅ 개선: 모든 사용자가 정확히 같은 시점에 결과 수신
                 console.log("🔄 Before setting scores, current state:", useGameStore.getState().scores)
                 setScores(eventData.scores || {})
-                console.log("🔄 After setting scores, state should be:", eventData.scores || {})
+                setTimeout(() => {
+                  console.log("🔄 After setting scores, actual state:", useGameStore.getState().scores)
+                }, 100)
                 
                 console.log("🔄 Before setting winner, current state:", useGameStore.getState().winner)
                 setWinner(eventData.winner || null)
-                console.log("🔄 After setting winner, state should be:", eventData.winner || null)
+                setTimeout(() => {
+                  console.log("🔄 After setting winner, actual state:", useGameStore.getState().winner)
+                }, 100)
                 
                 console.log("🔄 Before setting AI evaluation, current state:", useGameStore.getState().aiEvaluation)
                 setAIEvaluation(eventData.aiEvaluation || null)
-                console.log("🔄 After setting AI evaluation, state should be:", eventData.aiEvaluation || null)
+                setTimeout(() => {
+                  console.log("🔄 After setting AI evaluation, actual state:", useGameStore.getState().aiEvaluation)
+                  
+                  // AI 평가 데이터가 여전히 없으면 추가 시도
+                  if (!useGameStore.getState().aiEvaluation && eventData.scores) {
+                    console.log("🔍 AI 평가 데이터 여전히 없음 - 재시도...")
+                    setTimeout(() => {
+                      fetchGameResults(roomId)
+                    }, 2000)
+                  }
+                }, 100)
                 
                 setPhase("result")
                 clearGameTimer()
@@ -233,6 +284,11 @@ export function useServerEvents(roomId: string) {
               } catch (parseError) {
                 console.error("💥 round_completed 이벤트 파싱 오류:", parseError)
                 console.error("💥 원본 이벤트 데이터:", latestEvent.event_data)
+                console.error("💥 파싱 오류 상세:", {
+                  name: parseError.name,
+                  message: parseError.message,
+                  stack: parseError.stack?.substring(0, 200)
+                })
                 // 파싱 실패 시에도 최소한 result 화면으로 전환
                 setPhase("result")
                 clearGameTimer()

@@ -64,6 +64,47 @@ globalThis.__gameEvents = gameEvents
 globalThis.__drawingIdCounter = drawingIdCounter
 globalThis.__eventIdCounter = eventIdCounter
 
+// 메모리 백업 시스템 (개발 환경용)
+const saveMemoryBackup = () => {
+  if (process.env.NODE_ENV === 'development') {
+    const backup = {
+      rooms: Array.from(rooms.entries()),
+      players: Array.from(players.entries()),
+      drawings: Array.from(drawings.entries()),
+      gameEvents: Array.from(gameEvents.entries()),
+      drawingIdCounter,
+      eventIdCounter
+    }
+    console.log('[DB] Memory backup created:', {
+      roomsCount: backup.rooms.length,
+      playersCount: backup.players.length,
+      drawingsCount: backup.drawings.length,
+      eventsCount: backup.gameEvents.length
+    })
+    return backup
+  }
+}
+
+const restoreMemoryBackup = (backup: any) => {
+  if (backup && process.env.NODE_ENV === 'development') {
+    console.log('[DB] Restoring memory from backup...')
+    backup.rooms?.forEach(([key, value]: [string, Room]) => rooms.set(key, value))
+    backup.players?.forEach(([key, value]: [string, Player]) => players.set(key, value))
+    backup.drawings?.forEach(([key, value]: [number, Drawing]) => drawings.set(key, value))
+    backup.gameEvents?.forEach(([key, value]: [number, GameEvent]) => gameEvents.set(key, value))
+    
+    if (backup.drawingIdCounter) drawingIdCounter = backup.drawingIdCounter
+    if (backup.eventIdCounter) eventIdCounter = backup.eventIdCounter
+    
+    console.log('[DB] Memory restored from backup:', {
+      roomsCount: rooms.size,
+      playersCount: players.size,
+      drawingsCount: drawings.size,
+      eventsCount: gameEvents.size
+    })
+  }
+}
+
 // 데이터베이스 인터페이스
 class MemoryDatabase {
   prepare(query: string) {
@@ -127,6 +168,10 @@ class MemoryDatabase {
           const roomId = params[0]
           const eventType = params[1]
           const eventData = params[2]
+          
+          console.log(`[DB] Creating game event ${eventIdCounter} for room ${roomId}, type: ${eventType}`)
+          console.log(`[DB] Event data length: ${eventData?.length || 0}`)
+          
           gameEvents.set(eventIdCounter, {
             id: eventIdCounter,
             room_id: roomId,
@@ -134,7 +179,15 @@ class MemoryDatabase {
             event_data: eventData,
             created_at: new Date().toISOString()
           })
+          
+          const insertId = eventIdCounter
           eventIdCounter++
+          globalThis.__eventIdCounter = eventIdCounter
+          
+          console.log(`[DB] Game event created successfully with ID ${insertId}`)
+          console.log(`[DB] Total events in memory: ${gameEvents.size}`)
+          
+          return { changes: 1, lastInsertRowid: insertId }
         } else if (query.includes('UPDATE rooms')) {
           const roomId = params[params.length - 1]
           const room = rooms.get(roomId)
@@ -510,9 +563,73 @@ class MemoryDatabase {
           const foundDrawings = Array.from(drawings.values()).filter(d => d.room_id === roomId)
           console.log(`[DB] Found ${foundDrawings.length} total drawings in room`)
           return foundDrawings
-        } else if (query.includes('SELECT * FROM game_events WHERE room_id =')) {
+        } else if (query.includes('SELECT * FROM game_events') && query.includes('WHERE room_id =')) {
           const roomId = params[0]
-          return Array.from(gameEvents.values()).filter(e => e.room_id === roomId)
+          console.log(`[DB] Looking for game events in room ${roomId}`)
+          console.log(`[DB] Query:`, query)
+          console.log(`[DB] Params:`, params)
+          console.log(`[DB] Total events in memory:`, gameEvents.size)
+          
+          const roomEvents = Array.from(gameEvents.values())
+            .filter(e => {
+              const matches = e.room_id === roomId
+              console.log(`[DB] Event ${e.id}: room_id="${e.room_id}" === "${roomId}"? ${matches}`)
+              return matches
+            })
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          
+          console.log(`[DB] Found ${roomEvents.length} events for room ${roomId}:`, roomEvents.map(e => ({
+            id: e.id,
+            event_type: e.event_type,
+            has_data: !!e.event_data,
+            data_length: e.event_data?.length || 0,
+            created_at: e.created_at
+          })))
+          
+          return roomEvents
+        } else if (query.includes('SELECT event_data FROM game_events') && query.includes('WHERE room_id = ?') && query.includes("event_type = 'round_completed'")) {
+          const roomId = params[0]
+          console.log(`[DB] Looking for round_completed event in room ${roomId}`)
+          const event = Array.from(gameEvents.values())
+            .filter(e => e.room_id === roomId && e.event_type === 'round_completed')
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+          console.log(`[DB] Found round_completed event:`, event ? {
+            id: event.id,
+            has_data: !!event.event_data,
+            data_length: event.event_data?.length || 0,
+            created_at: event.created_at
+          } : 'Not found')
+          return event ? { event_data: event.event_data } : null
+        } else if (query.includes('SELECT id, event_data, created_at FROM game_events') && query.includes('WHERE room_id = ?') && query.includes("event_type = 'round_completed'")) {
+          const roomId = params[0]
+          console.log(`[DB] Looking for round_completed event details in room ${roomId}`)
+          const event = Array.from(gameEvents.values())
+            .filter(e => e.room_id === roomId && e.event_type === 'round_completed')
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+          console.log(`[DB] Found round_completed event details:`, event ? {
+            id: event.id,
+            has_data: !!event.event_data,
+            data_length: event.event_data?.length || 0,
+            created_at: event.created_at
+          } : 'Not found')
+          return event ? {
+            id: event.id,
+            event_data: event.event_data,
+            created_at: event.created_at
+          } : null
+        } else if (query.includes('SELECT id, room_id, event_type, created_at FROM game_events') && query.includes('ORDER BY created_at DESC')) {
+          console.log(`[DB] Getting recent events from all rooms`)
+          const recentEvents = Array.from(gameEvents.values())
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 5)
+            .map(e => ({
+              id: e.id,
+              room_id: e.room_id,
+              event_type: e.event_type,
+              created_at: e.created_at
+            }))
+          console.log(`[DB] Recent events:`, recentEvents)
+          return recentEvents
         }
         return []
       }

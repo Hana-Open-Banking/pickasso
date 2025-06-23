@@ -19,6 +19,8 @@ export interface AIEvaluation {
     playerId: string
     comment: string
   }>
+  summary?: string // 전체 평가 해설
+  evaluationCriteria?: string // 평가 기준 설명
 }
 
 export interface GameState {
@@ -136,12 +138,36 @@ export const useGameStore = create<GameState>((set, get) => {
     console.log("🤖 Setting AI evaluation:", aiEvaluation)
     console.log("🤖 AI rankings:", aiEvaluation?.rankings)
     console.log("🤖 AI comments:", aiEvaluation?.comments)
+    console.log("🤖 AI summary:", aiEvaluation?.summary)
+    console.log("🤖 AI evaluation criteria:", aiEvaluation?.evaluationCriteria)
     console.log("🤖 Previous state:", get().aiEvaluation)
-    set({ aiEvaluation: aiEvaluation ? { 
-      rankings: aiEvaluation.rankings ? [...aiEvaluation.rankings] : [],
-      comments: aiEvaluation.comments ? [...aiEvaluation.comments] : []
-    } : null })  // 완전한 불변성 보장
-    console.log("🤖 New state:", get().aiEvaluation)
+    
+    if (aiEvaluation) {
+      const newAiEvaluation = {
+        rankings: aiEvaluation.rankings ? [...aiEvaluation.rankings.map(r => ({ ...r }))] : [],
+        comments: aiEvaluation.comments ? [...aiEvaluation.comments.map(c => ({ ...c }))] : [],
+        summary: aiEvaluation.summary || undefined,
+        evaluationCriteria: aiEvaluation.evaluationCriteria || undefined
+      }
+      console.log("🤖 새로 설정될 AI 평가 객체:", newAiEvaluation)
+      set({ aiEvaluation: newAiEvaluation })
+    } else {
+      console.log("🤖 AI 평가를 null로 설정")
+      set({ aiEvaluation: null })
+    }
+    
+    // 즉시 검증
+    setTimeout(() => {
+      const currentState = get().aiEvaluation
+      console.log("🤖 설정 후 실제 상태:", currentState)
+      console.log("🤖 설정 성공 여부:", {
+        isSet: !!currentState,
+        hasRankings: !!currentState?.rankings,
+        hasComments: !!currentState?.comments,
+        hasSummary: !!currentState?.summary,
+        hasEvaluationCriteria: !!currentState?.evaluationCriteria
+      })
+    }, 50)
   },
 
     // 서버 액션들

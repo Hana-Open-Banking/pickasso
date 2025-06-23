@@ -292,7 +292,9 @@ export class GameManager {
           comments: submissions.map(s => ({
             playerId: s.playerId,
             comment: "그림을 그려주셔서 감사합니다! 다음에는 더 멋진 작품을 기대할게요. 😊"
-          }))
+          })),
+          summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 진행되었습니다. 모든 참가자들이 짧은 시간 내에 열심히 그려주셨고, 각자의 개성이 담긴 작품들이 완성되었습니다. 🎨`,
+          evaluationCriteria: "주제 연관성, 창의성, 완성도를 기준으로 공정하게 평가했습니다. 모든 작품에 각각의 매력이 있었습니다!"
         }
         
         // 점수 저장
@@ -361,7 +363,9 @@ export class GameManager {
           comments: validSubmissions.map(s => ({
             playerId: s.playerId,
             comment: `"${room.current_keyword || '그림'}"을 주제로 한 멋진 작품이었어요! 창의적인 아이디어가 돋보입니다. 🎨✨`
-          }))
+          })),
+          summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 ${validSubmissions.length}명이 참여했습니다. 모든 작품에서 각자의 창의성과 개성이 잘 드러났으며, 주제를 나름대로 해석한 다양한 접근 방식이 인상적이었습니다! 🌟`,
+          evaluationCriteria: "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. AI 평가가 제한되어 기본 평가를 적용했지만, 모든 작품의 노력을 인정합니다."
         }
         
         // 점수 기준으로 순위 재정렬
@@ -457,7 +461,7 @@ export class GameManager {
 
         comments.push({
           playerId: drawing.player_id,
-          comment: "멋진 그림이네요! AI 평가 중 오류가 발생했지만 노력이 보입니다. 😊"
+          comment: "멋진 그림이네요! AI 평가 중 오류가 발생했지만 노력이 보입니다. 다음에는 더욱 멋진 작품을 기대할게요! 😊🎨"
         })
 
         // 점수 저장
@@ -488,7 +492,12 @@ export class GameManager {
         WHERE id = ?
       `).run('finished', roomId)
 
-      const fallbackResult: EvaluationResult = { rankings, comments }
+      const fallbackResult: EvaluationResult = { 
+        rankings, 
+        comments,
+        summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 진행되었습니다. AI 평가 중 오류가 발생했지만, ${drawings.length}명의 참가자가 열심히 그려준 작품들을 기본 기준으로 평가했습니다. 모든 작품에 각자의 노력과 창의성이 담겨 있었습니다! 🎨`,
+        evaluationCriteria: "기술적 문제로 AI 평가가 제한되었지만, 기본적인 평가 기준을 적용하여 공정하게 평가했습니다. 모든 참가자의 노력을 인정합니다."
+      }
       
       console.log(`⚠️  기본 채점 결과:`, scores)
       return { scores, evaluationResult: fallbackResult }
@@ -723,11 +732,19 @@ export class GameManager {
     })
     
     try {
+      // JSON 문자열이 너무 클 수도 있으니 길이 확인
+      const jsonString = eventData ? JSON.stringify(eventData) : null
+      console.log(`📊 Event data size:`, {
+        hasEventData: !!eventData,
+        jsonLength: jsonString?.length || 0,
+        eventDataType: typeof eventData
+      })
+      
       const stmt = db.prepare(`
-        INSERT INTO game_events (room_id, event_type, event_data)
-        VALUES (?, ?, ?)
+        INSERT INTO game_events (room_id, event_type, event_data, created_at)
+        VALUES (?, ?, ?, datetime('now'))
       `)
-      const result = stmt.run(roomId, eventType, eventData ? JSON.stringify(eventData) : null)
+      const result = stmt.run(roomId, eventType, jsonString)
       
       console.log(`✅ Game event added successfully:`, {
         eventId: result.lastInsertRowid,
@@ -738,7 +755,8 @@ export class GameManager {
       
       // 검증: 생성된 이벤트 확인
       const verifyEvent = db.prepare(`
-        SELECT * FROM game_events 
+        SELECT id, room_id, event_type, created_at, LENGTH(event_data) as data_length
+        FROM game_events 
         WHERE room_id = ? AND event_type = ? 
         ORDER BY created_at DESC 
         LIMIT 1
@@ -748,11 +766,39 @@ export class GameManager {
         found: !!verifyEvent,
         eventId: verifyEvent?.id,
         eventType: verifyEvent?.event_type,
-        hasData: !!verifyEvent?.event_data
+        dataLength: verifyEvent?.data_length,
+        createdAt: verifyEvent?.created_at
       })
+      
+      // 추가 검증: 실제 데이터 내용 확인
+      if (verifyEvent && eventType === 'round_completed') {
+        const fullEvent = db.prepare(`
+          SELECT event_data FROM game_events WHERE id = ?
+        `).get(verifyEvent.id) as any
+        
+        if (fullEvent?.event_data) {
+          try {
+            const parsedData = JSON.parse(fullEvent.event_data)
+            console.log(`🔍 Round completed event data verification:`, {
+              hasScores: !!parsedData.scores,
+              hasWinner: !!parsedData.winner,
+              hasAiEvaluation: !!parsedData.aiEvaluation,
+              aiEvaluationKeys: parsedData.aiEvaluation ? Object.keys(parsedData.aiEvaluation) : [],
+              scoresCount: parsedData.scores ? Object.keys(parsedData.scores).length : 0
+            })
+          } catch (parseError) {
+            console.error(`💥 Failed to parse saved event data:`, parseError)
+          }
+        }
+      }
       
     } catch (error) {
       console.error(`💥 Failed to add game event:`, error)
+      console.error(`💥 Error details:`, {
+        name: error.name,
+        message: error.message,
+        code: error.code
+      })
       throw error
     }
   }

@@ -46,12 +46,21 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
         created_at: e.created_at
       })))
       
+      // 최신 round_completed 이벤트 조회
       const aiResult = db.prepare(`
-        SELECT event_data FROM game_events 
+        SELECT id, event_data, created_at FROM game_events 
         WHERE room_id = ? AND event_type = 'round_completed' 
         ORDER BY created_at DESC 
         LIMIT 1
       `).get(roomId) as any
+      
+      console.log("🔍 AI result query:", {
+        roomId,
+        found: !!aiResult,
+        eventId: aiResult?.id,
+        createdAt: aiResult?.created_at,
+        hasEventData: !!aiResult?.event_data
+      })
 
       if (aiResult?.event_data) {
         console.log("🔍 Found round_completed event data (first 200 chars):", 

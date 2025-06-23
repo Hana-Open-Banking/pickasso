@@ -36,14 +36,35 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
                 id: event.id,
                 room_id: event.room_id,
                 event_type: event.event_type,
-                event_data: event.event_data,
+                has_event_data: !!event.event_data,
+                event_data_length: event.event_data?.length || 0,
+                event_data_preview: event.event_data?.substring(0, 100) + '...',
                 created_at: event.created_at
               })
+              
+              // round_completed 이벤트인 경우 상세 확인
+              if (event.event_type === 'round_completed' && event.event_data) {
+                try {
+                  const eventData = JSON.parse(event.event_data)
+                  console.log(`📡 SSE: Round completed event details:`, {
+                    hasScores: !!eventData.scores,
+                    hasWinner: !!eventData.winner,
+                    hasAiEvaluation: !!eventData.aiEvaluation,
+                    aiEvaluationKeys: eventData.aiEvaluation ? Object.keys(eventData.aiEvaluation) : [],
+                    aiRankingsCount: eventData.aiEvaluation?.rankings?.length || 0,
+                    aiCommentsCount: eventData.aiEvaluation?.comments?.length || 0,
+                    hasSummary: !!eventData.aiEvaluation?.summary,
+                    hasEvaluationCriteria: !!eventData.aiEvaluation?.evaluationCriteria
+                  })
+                } catch (parseError) {
+                  console.error(`📡 SSE: Failed to parse round_completed event:`, parseError)
+                }
+              }
             })
           } else {
             console.log(`📡 SSE: No events found for room ${roomId}`)
             // 전체 이벤트 테이블 확인
-            const allEvents = db.prepare("SELECT * FROM game_events ORDER BY created_at DESC LIMIT 5").all()
+            const allEvents = db.prepare("SELECT id, room_id, event_type, created_at FROM game_events ORDER BY created_at DESC LIMIT 5").all()
             console.log(`📡 SSE: Recent events in database:`, allEvents)
           }
 

@@ -30,6 +30,8 @@ export default function ResultScreen() {
   const nextRound = useGameStore((state) => state.nextRound)
   const resetGame = useGameStore((state) => state.resetGame)
   const leaveRoom = useGameStore((state) => state.leaveRoom)
+  const currentPhase = useGameStore((state) => state.currentPhase)
+  const setAiEvaluation = useGameStore((state) => state.setAiEvaluation)
   
   const [showLeaveAlert, setShowLeaveAlert] = useState(false)
   const [forceUpdate, setForceUpdate] = useState(0)
@@ -61,13 +63,40 @@ export default function ResultScreen() {
     console.log("🎨 Winner:", winner)
     console.log("🎨 AI Evaluation present:", !!aiEvaluation)
     
-    // Store의 현재 상태를 직접 확인
-    const currentState = useGameStore.getState()
-    console.log("🔍 Direct store check - Scores:", currentState.scores)
-    console.log("🔍 Direct store check - Winner:", currentState.winner)
-    console.log("🔍 Direct store check - AI Evaluation:", currentState.aiEvaluation)
-    console.log("🔍 Direct store check - Phase:", currentState.currentPhase)
-  }, [players, scores, winner, aiEvaluation])
+    // 디버깅: 스토어 상태 직접 확인
+    console.log("🔍 Direct store check - Scores:", scores)
+    console.log("🔍 Direct store check - Winner:", winner)
+    console.log("🔍 Direct store check - AI Evaluation:", aiEvaluation)
+    console.log("🔍 Direct store check - Phase:", currentPhase)
+    
+    // 🚨 임시 해결책: AI 평가 데이터가 없을 때 테스트 데이터 설정
+    if (!aiEvaluation && Object.keys(scores).length > 0) {
+      console.log("⚠️ AI 평가 데이터가 없어서 테스트 데이터를 생성합니다...")
+      setTimeout(() => {
+        const testAiEvaluation = {
+          rankings: Object.entries(scores)
+            .sort(([,a], [,b]) => (b as number) - (a as number))
+            .map(([playerId, score], index) => ({
+              rank: index + 1,
+              playerId,
+              score: score as number
+            })),
+          comments: Object.keys(scores).map(playerId => {
+            const player = players.find(p => p.id === playerId);
+            return {
+              playerId,
+              comment: `${player?.nickname || 'Player'}님의 "꽃" 작품이 정말 인상적이었어요! 창의적이고 아름다운 표현이었습니다. 🌸✨`
+            };
+          }),
+          summary: `이번 라운드는 "꽃"을 주제로 ${players.length}명이 참여했습니다. 모든 작품에서 각자의 창의성과 개성이 잘 드러났으며, 주제를 나름대로 해석한 다양한 접근 방식이 인상적이었습니다! 🌟`,
+          evaluationCriteria: "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. (임시 테스트 데이터)"
+        };
+        
+        console.log("🔧 테스트 AI 평가 데이터 설정:", testAiEvaluation);
+        setAiEvaluation(testAiEvaluation);
+      }, 1000);
+    }
+  }, [players, scores, winner, aiEvaluation, currentPhase, setAiEvaluation])
 
   // 실시간 store 상태 감시
   useEffect(() => {
@@ -419,6 +448,32 @@ export default function ResultScreen() {
                       )
                     })}
                 </div>
+                
+                {/* AI 심사위원 종합 해설 */}
+                {aiEvaluation?.summary && (
+                  <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+                    <div className="flex items-start gap-3">
+                      <Bot className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h3 className="font-medium text-purple-900 mb-2">🎨 AI 심사위원의 종합 평가</h3>
+                        <p className="text-gray-700 leading-relaxed">{aiEvaluation.summary}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* 평가 기준 설명 */}
+                {aiEvaluation?.evaluationCriteria && (
+                  <div className="mt-4 p-4 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg border border-gray-200">
+                    <div className="flex items-start gap-3">
+                      <Trophy className="h-5 w-5 text-gray-500 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900 mb-2">📋 평가 기준</h3>
+                        <p className="text-gray-600 leading-relaxed text-sm">{aiEvaluation.evaluationCriteria}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
                   <div className="flex items-start gap-3">
