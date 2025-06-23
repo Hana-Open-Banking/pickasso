@@ -7,10 +7,21 @@ import { Users, Crown, Copy, Check, Home } from "lucide-react"
 import { useGameStore } from "@/store/game-store"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function LobbyScreen() {
-  const { roomId, players, isHost, startGame, leaveRoom } = useGameStore()
+  const { roomId, players, isHost, startGame, leaveRoom, playerId, nickname } = useGameStore()
   const [copied, setCopied] = useState(false)
+  const [showLeaveAlert, setShowLeaveAlert] = useState(false)
   const router = useRouter()
 
   const copyRoomId = async () => {
@@ -56,12 +67,24 @@ export default function LobbyScreen() {
             <CardContent>
               <div className="space-y-3">
                 {players.map((player) => (
-                  <div key={player.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div 
+                    key={player.id} 
+                    className={`flex items-center justify-between p-3 rounded-lg ${
+                      player.id === playerId 
+                        ? "bg-blue-50 border-2 border-blue-200" 
+                        : "bg-gray-50"
+                    }`}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white font-bold">
                         {player.nickname[0].toUpperCase()}
                       </div>
-                      <span className="font-medium">{player.nickname}</span>
+                      <div>
+                        <span className="font-medium">{player.nickname}</span>
+                        {player.id === playerId && (
+                          <span className="text-sm text-blue-600 ml-2">(나)</span>
+                        )}
+                      </div>
                     </div>
                     {player.is_host && (
                       <Badge variant="default" className="bg-yellow-500">
@@ -106,7 +129,7 @@ export default function LobbyScreen() {
               )}
 
               <div className="pt-4 border-t">
-                <Button onClick={handleLeaveRoom} variant="outline" className="w-full" size="lg">
+                <Button onClick={() => setShowLeaveAlert(true)} variant="outline" className="w-full" size="lg">
                   <Home className="h-4 w-4 mr-2" />
                   방 나가기
                 </Button>
@@ -115,6 +138,22 @@ export default function LobbyScreen() {
           </Card>
         </div>
       </div>
+
+      <AlertDialog open={showLeaveAlert} onOpenChange={setShowLeaveAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>정말 방을 나가시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              방을 나가면 다시 입장하기 위해서는 방 번호를 다시 입력해야 합니다.
+              {isHost && " 방장 권한은 다른 플레이어에게 넘어갑니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLeaveRoom}>나가기</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

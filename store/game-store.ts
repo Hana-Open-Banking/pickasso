@@ -74,13 +74,25 @@ export const useGameStore = create<GameState>((set, get) => {
       const state = get()
       // 현재 플레이어의 방장 상태 업데이트
       const currentPlayer = players.find(p => p.id === state.playerId)
-      const isHost = currentPlayer?.is_host || false
-      
-      console.log("Setting players:", players)
-      console.log("Current player:", currentPlayer)
-      console.log("Is host:", isHost)
-      
-      set({ players, isHost })
+      if (currentPlayer) {
+        const isHost = currentPlayer.is_host || false
+        console.log("Setting players:", {
+          total: players.length,
+          currentPlayer: {
+            id: currentPlayer.id,
+            nickname: currentPlayer.nickname,
+            is_host: currentPlayer.is_host
+          },
+          isHost
+        })
+        set({ players, isHost })
+      } else {
+        console.log("Current player not found in players list:", {
+          playerId: state.playerId,
+          players: players.map(p => ({ id: p.id, nickname: p.nickname, is_host: p.is_host }))
+        })
+        set({ players })
+      }
     },
     setKeyword: (keyword) => set({ keyword }),
     setTimeLeft: (timeLeft) => set({ timeLeft }),

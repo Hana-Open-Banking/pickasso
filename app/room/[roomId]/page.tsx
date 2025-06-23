@@ -73,35 +73,34 @@ export default function RoomPage() {
 
   // 창 닫기/뒤로가기 시 방 나가기 처리
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
       if (roomId && nickname) {
         console.log("Window closing, leaving room...")
-        // 동기적으로 방 나가기 요청 (페이지가 닫히기 전에)
-        const data = JSON.stringify({
-          roomId,
-          playerId: useGameStore.getState().playerId
-        })
+        event.preventDefault()
+        event.returnValue = ""
         
-        // sendBeacon 사용
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon('/api/rooms/leave', data)
-        } else {
-          // fallback: 동기 XMLHttpRequest
-          const xhr = new XMLHttpRequest()
-          xhr.open('POST', '/api/rooms/leave', false) // 동기 요청
-          xhr.setRequestHeader('Content-Type', 'application/json')
-          xhr.send(data)
+        try {
+          // store의 leaveRoom 함수 사용
+          await useGameStore.getState().leaveRoom()
+          console.log("Successfully left room")
+        } catch (error) {
+          console.error("Error leaving room:", error)
         }
       }
     }
 
-    const handlePopState = (event: PopStateEvent) => {
+    const handlePopState = async (event: PopStateEvent) => {
       if (roomId && nickname) {
         console.log("Back button pressed, leaving room...")
-        // 뒤로가기 시 즉시 방 나가기
-        leaveRoom()
-        // 홈으로 리다이렉트
-        window.location.href = "/"
+        try {
+          // store의 leaveRoom 함수 사용
+          await leaveRoom()
+          console.log("Successfully left room, redirecting to home")
+          window.location.href = "/"
+        } catch (error) {
+          console.error("Error leaving room:", error)
+          window.location.href = "/"
+        }
       }
     }
 

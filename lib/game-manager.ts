@@ -370,6 +370,13 @@ export class GameManager {
       if (!verifyHost || verifyHost.id !== newHostId) {
         throw new Error(`Host transfer verification failed. Expected host: ${newHostId}, Actual host: ${verifyHost?.id}`)
       }
+
+      // 방장 위임 이벤트 추가
+      this.addGameEvent(roomId, "host_transferred", {
+        oldHostId: currentHost?.id,
+        newHostId: newHost.id,
+        newHostNickname: newHost.nickname
+      })
       
       console.log(`[GameManager] Host successfully transferred from ${currentHost?.id} to ${newHostId}`)
     } catch (error) {

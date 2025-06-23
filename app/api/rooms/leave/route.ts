@@ -16,6 +16,11 @@ export async function POST(request: NextRequest) {
     const { roomId, playerId } = await request.json()
     console.log("[LEAVE] Request body:", { roomId, playerId })
 
+    if (!roomId || !playerId) {
+      console.log("[LEAVE] Missing required fields:", { roomId, playerId })
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
     // 현재 방의 플레이어 목록 가져오기
     console.log("[LEAVE] Fetching current players...")
     const currentPlayers = GameManager.getRoomPlayers(roomId)
@@ -28,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     // 나가는 플레이어가 방장인지 확인
     const leavingPlayer = currentPlayers.find((p: Player) => p.id === playerId)
-    const isHost = leavingPlayer?.is_host === true
+    const isHost = leavingPlayer?.is_host || false
     console.log("[LEAVE] Leaving player details:", {
       id: leavingPlayer?.id,
       nickname: leavingPlayer?.nickname,
@@ -76,6 +81,13 @@ export async function POST(request: NextRequest) {
             WHERE id = ? AND room_id = ?
           `)
           setNewHostStmt.run(newHost.id, roomId)
+
+          // 방장 위임 이벤트 추가
+          GameManager.addGameEvent(roomId, "host_transferred", {
+            oldHostId: playerId,
+            newHostId: newHost.id,
+            newHostNickname: newHost.nickname
+          })
 
           console.log("[LEAVE] Step 3: Verifying host transfer...")
           const updatedPlayers = GameManager.getRoomPlayers(roomId)

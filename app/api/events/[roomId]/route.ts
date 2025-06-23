@@ -31,20 +31,20 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
           const room = db.prepare("SELECT * FROM rooms WHERE id = ?").get(roomId) as any
           const players = db.prepare("SELECT * FROM players WHERE room_id = ?").all(roomId) as any[]
 
-          console.log(`SSE: Room ${roomId} details:`, {
-            id: room?.id,
-            status: room?.status,
-            current_keyword: room?.current_keyword,
-            time_left: room?.time_left,
-            round_number: room?.round_number
-          })
+          // console.log(`SSE: Room ${roomId} details:`, {
+          //   id: room?.id,
+          //   status: room?.status,
+          //   current_keyword: room?.current_keyword,
+          //   time_left: room?.time_left,
+          //   round_number: room?.round_number
+          // })
 
-          console.log(`SSE: Players in room ${roomId}:`, players.map(p => ({
-            id: p.id,
-            nickname: p.nickname,
-            has_submitted: p.has_submitted,
-            is_host: p.is_host
-          })))
+          // console.log(`SSE: Players in room ${roomId}:`, players.map(p => ({
+          //   id: p.id,
+          //   nickname: p.nickname,
+          //   has_submitted: p.has_submitted,
+          //   is_host: p.is_host
+          // })))
 
           const data = {
             type: "game_state",
@@ -53,12 +53,12 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
             events,
           }
 
-          console.log(`SSE: Sending data for room ${roomId}:`, {
-            roomStatus: room?.status,
-            playerCount: players?.length,
-            eventCount: events?.length,
-            latestEvent: events?.[0]
-          })
+          // console.log(`SSE: Sending data for room ${roomId}:`, {
+          //   roomStatus: room?.status,
+          //   playerCount: players?.length,
+          //   eventCount: events?.length,
+          //   latestEvent: events?.[0]
+          // })
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
         } catch (error) {
