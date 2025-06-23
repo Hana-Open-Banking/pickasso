@@ -69,9 +69,12 @@ class MemoryDatabase {
   prepare(query: string) {
     return {
       run: (...params: any[]) => {
+        console.log("\n[DB] Executing query:", query)
+        console.log("[DB] Query parameters:", params)
+
         if (query.includes('INSERT INTO rooms')) {
-          const roomId = params[0]
-          const hostId = params[1]
+          const [roomId, hostId] = params
+          console.log(`[DB] Creating room ${roomId} with host ${hostId}`)
           rooms.set(roomId, {
             id: roomId,
             host_id: hostId,
@@ -80,27 +83,22 @@ class MemoryDatabase {
             time_left: 60,
             round_number: 1
           })
+          console.log(`[DB] Room created:`, rooms.get(roomId))
+          return { changes: 1 }
         } else if (query.includes('INSERT INTO players')) {
-          const playerId = params[0]
-          const roomId = params[1]
-          const nickname = params[2]
-          const isHost = params[3]
-          console.log(`DB: Inserting player - id: ${playerId}, roomId: ${roomId}, nickname: ${nickname}, isHost: ${isHost} (type: ${typeof isHost})`)
-          
-          // TRUE/FALSE를 boolean으로 변환
-          const isHostBoolean = isHost === 'TRUE' || isHost === true
-          console.log(`DB: Converted isHost: ${isHost} -> ${isHostBoolean}`)
-          
+          const [playerId, roomId, nickname, isHost] = params
+          console.log(`[DB] Adding player ${playerId} (${nickname}) to room ${roomId}, isHost: ${isHost}`)
           players.set(playerId, {
             id: playerId,
             room_id: roomId,
             nickname,
-            is_host: isHostBoolean,
+            is_host: isHost,
             has_submitted: false,
             score: 0,
             joined_at: new Date().toISOString()
           })
-          console.log(`DB: Player stored with is_host: ${players.get(playerId)?.is_host}`)
+          console.log(`[DB] Player added successfully:`, players.get(playerId))
+          return { changes: 1 }
         } else if (query.includes('INSERT INTO drawings')) {
           const playerId = params[0]
           const roomId = params[1]
@@ -152,6 +150,11 @@ class MemoryDatabase {
             } else if (query.includes('status =') && query.includes('scoring')) {
               // scoring 상태로 변경
               room.status = 'scoring'
+            } else if (query.includes('host_id =')) {
+              // 방장 ID 업데이트 (transferHost에서 사용)
+              const newHostId = params[0]
+              console.log(`DB: Updating room ${roomId} host_id to: ${newHostId}`)
+              room.host_id = newHostId
             } else if (query.includes('status =')) {
               // 단순 status 업데이트
               const status = params[0]
@@ -203,20 +206,31 @@ class MemoryDatabase {
         } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =') && query.includes('is_host = FALSE')) {
           // 모든 플레이어의 방장 권한 해제
           const roomId = params[0]
-          console.log(`DB: Removing host status from all players in room ${roomId}`)
+          console.log(`[DB] Removing host status from all players in room ${roomId}`)
+          console.log(`[DB] Players before update:`, Array.from(players.values()))
+          let updateCount = 0
           for (const player of players.values()) {
             if (player.room_id === roomId) {
               player.is_host = false
+              updateCount++
             }
           }
-        } else if (query.includes('UPDATE players') && query.includes('WHERE room_id =') && query.includes('is_host = TRUE')) {
-          // 모든 플레이어의 방장 권한 해제
-          const roomId = params[0]
-          console.log(`DB: Removing host status from all players in room ${roomId}`)
-          for (const player of players.values()) {
-            if (player.room_id === roomId) {
-              player.is_host = false
-            }
+          console.log(`[DB] Players after update:`, Array.from(players.values()))
+          return { changes: updateCount }
+        } else if (query.includes('UPDATE players') && query.includes('SET is_host = TRUE')) {
+          // 새로운 방장 설정
+          const [playerId, roomId] = params
+          console.log(`[DB] Setting player ${playerId} as new host in room ${roomId}`)
+          console.log(`[DB] Players before update:`, Array.from(players.values()))
+          const player = Array.from(players.values()).find(p => p.id === playerId && p.room_id === roomId)
+          if (player) {
+            player.is_host = true
+            console.log(`[DB] Successfully set player ${playerId} as new host`)
+            console.log(`[DB] Players after update:`, Array.from(players.values()))
+            return { changes: 1 }
+          } else {
+            console.error(`[DB] Failed to find player ${playerId} in room ${roomId}`)
+            return { changes: 0 }
           }
         } else if (query.includes('UPDATE drawings')) {
           const score = params[0]
@@ -225,67 +239,104 @@ class MemoryDatabase {
           if (drawing) {
             drawing.score = score
           }
-        } else if (query.includes('DELETE FROM rooms')) {
+        } else if (query.includes('DELETE FROM players') && query.includes('WHERE id = ?') && query.includes('AND room_id = ?')) {
+          const [playerId, roomId] = params
+          console.log(`[DB] DELETE 로직 진입! player: ${playerId}, room: ${roomId}`)
+          
+          const player = players.get(playerId)
+          console.log(`[DB] Found player:`, player)
+          
+          if (player && player.room_id === roomId) {
+            const deleteResult = players.delete(playerId)
+            console.log(`[DB] Delete result:`, deleteResult)
+            return { changes: 1 }
+          }
+          
+          return { changes: 0 }
+        } else if (query.includes('DELETE FROM rooms WHERE id =')) {
           const roomId = params[0]
-          rooms.delete(roomId)
-          // 관련 데이터도 삭제
+          console.log(`[DB] Deleting room ${roomId}`)
+          const roomDeleted = rooms.delete(roomId)
+          console.log(`[DB] Room deletion successful:`, roomDeleted)
+          
+          // 방이 삭제될 때 해당 방의 모든 플레이어도 삭제
+          let playerCount = 0
+          const playersToDelete = Array.from(players.values()).filter(p => p.room_id === roomId)
+          
+          for (const player of playersToDelete) {
+            console.log(`[DB] Removing player ${player.id} as part of room ${roomId} deletion`)
+            players.delete(player.id)
+            playerCount++
+          }
+          
+          console.log(`[DB] Room ${roomId} and ${playerCount} players deleted`)
+          return { changes: roomDeleted ? 1 : 0 }
+        } else if (query.includes('UPDATE players') && query.includes('has_submitted')) {
+          const [roomId] = params
+          console.log(`DB: Resetting all players in room ${roomId} has_submitted to: undefined`)
           for (const [playerId, player] of players.entries()) {
             if (player.room_id === roomId) {
-              players.delete(playerId)
+              player.has_submitted = false
+              console.log(`DB: Updated player ${playerId} has_submitted to undefined`)
             }
           }
-          for (const [drawingId, drawing] of drawings.entries()) {
-            if (drawing.room_id === roomId) {
-              drawings.delete(drawingId)
-            }
-          }
-          for (const [eventId, event] of gameEvents.entries()) {
-            if (event.room_id === roomId) {
-              gameEvents.delete(eventId)
-            }
-          }
-        } else if (query.includes('DELETE FROM players')) {
-          const playerId = params[0]
-          const roomId = params[1]
-          console.log(`DB: Deleting player ${playerId} from room ${roomId}`)
-          players.delete(playerId)
         }
+        return { changes: 0 }
       },
       get: (...params: any[]) => {
-        if (query.includes('SELECT * FROM rooms WHERE id =')) {
+        console.log("\n[DB] Executing query:", query)
+        console.log("[DB] Query parameters:", params)
+        console.log("[DB] Current players in memory:", Array.from(players.values()))
+
+        if (query.includes('SELECT * FROM players')) {
+          const [playerId, roomId] = params
+          console.log(`[DB] Looking for player ${playerId} in room ${roomId}`)
+          const player = players.get(playerId)
+          console.log(`[DB] Found player in memory:`, player)
+          const isValidPlayer = player && player.room_id === roomId
+          console.log(`[DB] Is player valid for room ${roomId}?`, isValidPlayer)
+          return isValidPlayer ? player : null
+        } else if (query.includes('SELECT * FROM rooms WHERE id =')) {
           const roomId = params[0]
-          console.log(`DB: Looking for room ${roomId}`)
-          console.log(`DB: Available rooms:`, Array.from(rooms.keys()))
+          console.log(`[DB] Looking for room ${roomId}`)
+          console.log(`[DB] Available rooms:`, Array.from(rooms.keys()))
           const room = rooms.get(roomId) || null
-          console.log(`DB: Room ${roomId} found:`, room ? 'YES' : 'NO')
+          console.log(`[DB] Room ${roomId} found:`, room ? 'YES' : 'NO')
+          if (room) {
+            console.log(`[DB] Room details:`, room)
+          }
           return room
-        } else if (query.includes('SELECT id FROM players WHERE room_id =') && query.includes('nickname =')) {
+        } else if (query.includes('SELECT id, nickname FROM players WHERE room_id = ? AND is_host = TRUE')) {
           const roomId = params[0]
-          const nickname = params[1]
-          for (const player of players.values()) {
-            if (player.room_id === roomId && player.nickname === nickname) {
-              return { id: player.id }
-            }
-          }
-          return null
-        } else if (query.includes('SELECT id FROM players WHERE room_id =') && query.includes('ORDER BY score DESC')) {
-          const roomId = params[0]
-          const roomPlayers = Array.from(players.values()).filter(p => p.room_id === roomId)
-          if (roomPlayers.length > 0) {
-            const winner = roomPlayers.reduce((prev, current) => 
-              (prev.score > current.score) ? prev : current
-            )
-            return { id: winner.id }
-          }
-          return null
+          console.log(`[DB] Looking for host in room ${roomId}`)
+          const player = Array.from(players.values()).find(p => p.room_id === roomId && p.is_host === true)
+          console.log(`[DB] Host found:`, player || 'No host found')
+          return player ? { id: player.id, nickname: player.nickname } : null
+        } else if (query.includes('SELECT id, nickname FROM players WHERE id = ? AND room_id = ?')) {
+          const [playerId, roomId] = params
+          console.log(`[DB] Looking for player ${playerId} in room ${roomId}`)
+          const player = players.get(playerId)
+          console.log(`[DB] Player found:`, player || 'No player found')
+          return player && player.room_id === roomId ? { id: player.id, nickname: player.nickname } : null
         }
         return null
       },
       all: (...params: any[]) => {
+        console.log("\n[DB] Executing query:", query)
+        console.log("[DB] Query parameters:", params)
+
         if (query.includes('SELECT * FROM players WHERE room_id =')) {
           const roomId = params[0]
-          const roomPlayers = Array.from(players.values()).filter(p => p.room_id === roomId)
-          console.log(`DB: Getting players for room ${roomId}:`, roomPlayers.map(p => ({ id: p.id, nickname: p.nickname, is_host: p.is_host })))
+          console.log(`[DB] Getting players for room ${roomId}`)
+          const roomPlayers = Array.from(players.values())
+            .filter(p => p.room_id === roomId)
+            .sort((a, b) => new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime())
+          console.log(`[DB] Found ${roomPlayers.length} players:`, roomPlayers.map(p => ({
+            id: p.id,
+            nickname: p.nickname,
+            is_host: p.is_host,
+            joined_at: p.joined_at
+          })))
           return roomPlayers
         } else if (query.includes('SELECT * FROM drawings WHERE room_id =') && query.includes('round_number =')) {
           const roomId = params[0]

@@ -64,9 +64,9 @@ export class GameManager {
 
     const stmt = db.prepare(`
       INSERT INTO players (id, room_id, nickname, is_host, has_submitted, score)
-      VALUES (?, ?, ?, FALSE, FALSE, 0)
+      VALUES (?, ?, ?, ?, FALSE, 0)
     `)
-    stmt.run(playerId, roomId, nickname)
+    stmt.run(playerId, roomId, nickname, false)
 
     console.log(`Player ${playerId} (${nickname}) successfully joined room ${roomId}`)
     return true
@@ -253,13 +253,54 @@ export class GameManager {
     db.prepare("DELETE FROM rooms WHERE id = ?").run(roomId)
   }
 
-  static removePlayer(roomId: string, playerId: string): void {
-    console.log(`Removing player ${playerId} from room ${roomId}`)
-    db.prepare("DELETE FROM players WHERE id = ? AND room_id = ?").run(playerId, roomId)
+  static removePlayer(roomId: string, playerId: string): boolean {
+    console.log(`[GameManager] Removing player ${playerId} from room ${roomId}`)
+    
+    // 플레이어가 실제로 방에 있는지 확인
+    const player = db.prepare(`
+      SELECT * FROM players 
+      WHERE id = ? AND room_id = ?
+    `).get(playerId, roomId)
+
+    if (!player) {
+      console.log(`[GameManager] Player ${playerId} not found in room ${roomId}`)
+      return false
+    }
+
+    console.log(`[GameManager] Found player to remove:`, player)
+
+    try {
+      // 플레이어 삭제
+      const result = db.prepare(`
+        DELETE FROM players 
+        WHERE id = ? AND room_id = ?
+      `).run(playerId, roomId)
+
+      console.log(`[GameManager] Player removal result:`, result)
+
+      if (!result || result.changes === 0) {
+        console.log(`[GameManager] Failed to remove player - no changes made`)
+        return false
+      }
+
+      // 방에 남은 플레이어 확인
+      const remainingPlayers = this.getRoomPlayers(roomId)
+      console.log(`[GameManager] Remaining players in room:`, remainingPlayers)
+
+      if (remainingPlayers.length === 0) {
+        console.log(`[GameManager] No players left in room ${roomId}, deleting room`)
+        this.deleteRoom(roomId)
+      }
+
+      return true
+    } catch (error) {
+      console.error(`[GameManager] Failed to remove player:`, error)
+      return false
+    }
   }
 
   static transferHost(roomId: string, newHostId: string): void {
-    console.log(`Transferring host to player ${newHostId} in room ${roomId}`)
+    console.log(`[GameManager] Transferring host to player ${newHostId} in room ${roomId}`)
     
     // 현재 방장 정보 확인
     const currentHost = db.prepare(`
@@ -268,7 +309,7 @@ export class GameManager {
     `).get(roomId) as { id: string, nickname: string } | null
     
     if (currentHost) {
-      console.log(`Current host: ${currentHost.id} (${currentHost.nickname})`)
+      console.log(`[GameManager] Current host: ${currentHost.id} (${currentHost.nickname})`)
     }
     
     // 새로운 방장 정보 확인
@@ -278,30 +319,30 @@ export class GameManager {
     `).get(newHostId, roomId) as { id: string, nickname: string } | null
     
     if (!newHost) {
-      console.error(`New host ${newHostId} not found in room ${roomId}`)
-      return
+      console.error(`[GameManager] New host ${newHostId} not found in room ${roomId}`)
+      throw new Error(`New host ${newHostId} not found in room ${roomId}`)
     }
     
-    console.log(`New host: ${newHost.id} (${newHost.nickname})`)
+    console.log(`[GameManager] New host candidate: ${newHost.id} (${newHost.nickname})`)
     
     try {
-      // 기존 방장을 일반 플레이어로 변경
-      const updateOldHost = db.prepare(`
-        UPDATE players 
-        SET is_host = FALSE 
-        WHERE room_id = ? AND is_host = TRUE
-      `)
-      const oldHostResult = updateOldHost.run(roomId)
-      console.log(`Old host update result:`, oldHostResult)
-      
-      // 새로운 방장 설정
+      // 먼저 새로운 방장 설정
       const updateNewHost = db.prepare(`
         UPDATE players 
         SET is_host = TRUE 
         WHERE id = ? AND room_id = ?
       `)
       const newHostResult = updateNewHost.run(newHostId, roomId)
-      console.log(`New host update result:`, newHostResult)
+      console.log(`[GameManager] New host update result:`, newHostResult)
+      
+      // 그 다음 기존 방장을 일반 플레이어로 변경
+      const updateOldHost = db.prepare(`
+        UPDATE players 
+        SET is_host = FALSE 
+        WHERE room_id = ? AND is_host = TRUE AND id != ?
+      `)
+      const oldHostResult = updateOldHost.run(roomId, newHostId)
+      console.log(`[GameManager] Old host update result:`, oldHostResult)
       
       // 방의 host_id 업데이트
       const updateRoom = db.prepare(`
@@ -310,9 +351,7 @@ export class GameManager {
         WHERE id = ?
       `)
       const roomResult = updateRoom.run(newHostId, roomId)
-      console.log(`Room update result:`, roomResult)
-      
-      console.log(`Host successfully transferred from ${currentHost?.id} to ${newHostId}`)
+      console.log(`[GameManager] Room update result:`, roomResult)
       
       // 변경 사항 확인
       const verifyHost = db.prepare(`
@@ -320,27 +359,56 @@ export class GameManager {
         WHERE room_id = ? AND is_host = TRUE
       `).get(roomId) as { id: string, nickname: string, is_host: boolean } | null
       
-      console.log(`Verification - Current host:`, verifyHost)
+      console.log(`[GameManager] Verification - Current host:`, verifyHost)
       
       const verifyRoom = db.prepare(`
         SELECT host_id FROM rooms WHERE id = ?
       `).get(roomId) as { host_id: string } | null
       
-      console.log(`Verification - Room host_id:`, verifyRoom)
+      console.log(`[GameManager] Verification - Room host_id:`, verifyRoom)
       
+      if (!verifyHost || verifyHost.id !== newHostId) {
+        throw new Error(`Host transfer verification failed. Expected host: ${newHostId}, Actual host: ${verifyHost?.id}`)
+      }
+      
+      console.log(`[GameManager] Host successfully transferred from ${currentHost?.id} to ${newHostId}`)
     } catch (error) {
-      console.error(`Error transferring host:`, error)
+      console.error(`[GameManager] Error transferring host:`, error)
       throw error
     }
   }
 
-  static findNewHost(roomId: string): string | null {
+  static findNewHost(roomId: string, excludePlayerId?: string): string | null {
     const players = this.getRoomPlayers(roomId)
-    if (players.length === 0) return null
+    console.log(`findNewHost: All players in room ${roomId}:`, players.map(p => ({ id: p.id, nickname: p.nickname, is_host: p.is_host, joined_at: p.joined_at })))
+    
+    if (players.length === 0) {
+      console.log(`findNewHost: No players in room ${roomId}`)
+      return null
+    }
+    
+    // 나가려는 플레이어를 제외한 플레이어들 중에서 선택
+    const availablePlayers = excludePlayerId 
+      ? players.filter(p => p.id !== excludePlayerId)
+      : players
+    
+    console.log(`findNewHost: Excluding player ${excludePlayerId}, available players:`, availablePlayers.map(p => ({ id: p.id, nickname: p.nickname, is_host: p.is_host, joined_at: p.joined_at })))
+    
+    if (availablePlayers.length === 0) {
+      console.log(`findNewHost: No available players after exclusion`)
+      return null
+    }
     
     // 가장 먼저 입장한 플레이어를 새로운 방장으로 선택
-    const newHost = players[0]
-    console.log(`New host selected: ${newHost.id} (${newHost.nickname})`)
+    // joined_at으로 정렬하여 가장 먼저 들어온 플레이어 선택
+    const sortedPlayers = availablePlayers.sort((a, b) => {
+      const aTime = new Date(a.joined_at).getTime()
+      const bTime = new Date(b.joined_at).getTime()
+      return aTime - bTime
+    })
+    
+    const newHost = sortedPlayers[0]
+    console.log(`findNewHost: New host selected: ${newHost.id} (${newHost.nickname}) - joined at ${newHost.joined_at}`)
     return newHost.id
   }
 
