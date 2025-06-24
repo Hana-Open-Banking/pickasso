@@ -117,7 +117,7 @@ export default function Canvas({ color, brushSize, onCanvasChange, disabled }: C
     }
   }, [startDrawing, draw, stopDrawing])
 
-  const clearCanvas = () => {
+  const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current
     const ctx = canvas?.getContext("2d")
     if (canvas && ctx) {
@@ -126,7 +126,7 @@ export default function Canvas({ color, brushSize, onCanvasChange, disabled }: C
       ctx.fillRect(0, 0, canvas.width, canvas.height)
       onCanvasChange("")
     }
-  }
+  }, [onCanvasChange])
 
   useEffect(() => {
     // 초기 캔버스 설정
@@ -144,7 +144,7 @@ export default function Canvas({ color, brushSize, onCanvasChange, disabled }: C
       ;(canvasRef.current as any).clearCanvas = clearCanvas
       ;(canvasRef.current as any).getImageData = () => getCanvasImageData(canvasRef.current!)
     }
-  }, [])
+  }, [clearCanvas])
 
   return (
     <div className="relative">
