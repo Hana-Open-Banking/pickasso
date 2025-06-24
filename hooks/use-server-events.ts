@@ -48,10 +48,11 @@ export function useServerEvents(roomId: string) {
     }
 
     // 플레이어 ID를 이름으로 매핑하는 맵 생성
-    const playerMap = new Map();
-    players.forEach((player) => {
-      playerMap.set(player.id, player.name);
-    });
+    const playerMap = new Map()
+    players.forEach(player => {
+      playerMap.set(player.id, player.nickname || player.name)
+    })
+
 
     console.log("🔍 Player mapping:", Array.from(playerMap.entries()));
     console.log("🔍 Original rankings:", aiEvaluation.rankings);

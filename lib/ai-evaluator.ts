@@ -110,6 +110,54 @@ function validateApiKey(): string {
   return apiKey;
 }
 
+// Helper to build prompt with dynamic playerIds - compatible with Gemini, OpenAI, and Claude
+function buildAIEvalPrompt(keyword: string, submissions: DrawingSubmission[]): string {
+  const allowedIds = submissions.map(s => `"${s.playerId}"`).join(", ");
+  const rankingsExample = submissions.map((s, idx) => {
+    const base = 95 - idx * 5;
+    return `{"rank": ${idx + 1}, "playerId": "${s.playerId}", "score": ${base}}`;
+  }).join(",\n    ");
+  const commentsExample = submissions.map(s => {
+    return `{"playerId": "${s.playerId}", "comment": "주제 '${keyword}'를 매우 창의적으로 표현했습니다! 특히 [구체적인 요소]가 인상적이었고, 전체적인 완성도도 훌륭합니다. 색상 선택과 구도가 매우 조화롭네요. 🌟"}`;
+  }).join(",\n    ");
+
+  return `**🎨 AI 그림 평가 챌린지!**
+
+주제: "${keyword}"
+
+안녕하세요! 저는 그림 그리기 게임의 AI 심사위원입니다. 제출된 ${submissions.length}개의 작품을 다음 기준으로 종합 평가하겠습니다:
+
+사용 가능한 playerId 목록: [${allowedIds}]
+반드시 이 ID만 사용하여 결과 JSON을 작성하세요. 새로운 ID를 만들면 안 됩니다.
+
+**📋 평가 기준 (총 100점)**
+1. **주제 연관성 (50점)**: "${keyword}"라는 주제를 얼마나 잘 표현했는가?
+2. **창의성 (30점)**: 독창적이고 참신한 아이디어가 있는가?
+3. **완성도 (20점)**: 그림의 기술적 완성도와 전체적인 완성감
+
+**🎯 평가 결과를 다음 JSON 형식으로만 반환해주세요:**
+
+\`\`\`json
+{
+  "rankings": [
+    ${rankingsExample}
+  ],
+  "comments": [
+    ${commentsExample}
+  ],
+  "summary": "이번 라운드는 '${keyword}'라는 주제로 진행되었습니다. 모든 참가자들이 각자의 개성과 창의력을 발휘한 멋진 작품들을 선보였습니다. 특히 [전체적인 특징이나 패턴]이 인상적이었으며, 다음 라운드가 더욱 기대됩니다! 🎨✨",
+  "evaluationCriteria": "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. 모든 작품을 공정하고 객관적으로 비교 분석했으며, 각 작품의 고유한 장점을 찾아 격려하는 방향으로 코멘트했습니다."
+}
+\`\`\`
+
+**💡 평가 시 주의사항:**
+- 위 JSON 이외의 텍스트를 추가하지 말 것
+- 각 작품의 장점을 찾아 격려하는 톤으로 코멘트 작성
+- 구체적이고 건설적인 피드백 제공
+- 점수는 60~100점 범위에서 변별력 있게 부여
+- 코멘트는 최소 2-3줄로 상세하게 작성`;
+}
+
 // Gemini 평가자 클래스
 class GeminiEvaluator implements AIEvaluator {
   async evaluate(submissions: DrawingSubmission[], keyword: string): Promise<EvaluationResult> {
@@ -127,39 +175,7 @@ class GeminiEvaluator implements AIEvaluator {
 
       const parts = [
         {
-          text: `**🎨 AI 그림 평가 챌린지!**
-
-주제: "${keyword}"
-
-안녕하세요! 저는 그림 그리기 게임의 AI 심사위원입니다. 제출된 ${submissions.length}개의 작품을 다음 기준으로 종합 평가하겠습니다:
-
-**📋 평가 기준 (총 100점)**
-1. **주제 연관성 (50점)**: "${keyword}"라는 주제를 얼마나 잘 표현했는가?
-2. **창의성 (30점)**: 독창적이고 참신한 아이디어가 있는가?
-3. **완성도 (20점)**: 그림의 기술적 완성도와 전체적인 완성감
-
-**🎯 평가 결과를 다음 JSON 형식으로만 반환해주세요:**
-
-\`\`\`json
-{
-  "rankings": [
-    {"rank": 1, "playerId": "${submissions[0]?.playerId}", "score": 95},
-    {"rank": 2, "playerId": "${submissions[1]?.playerId}", "score": 88}
-  ],
-  "comments": [
-    {"playerId": "${submissions[0]?.playerId}", "comment": "주제 '${keyword}'를 매우 창의적으로 표현했습니다! 특히 [구체적인 요소]가 인상적이었고, 전체적인 완성도도 훌륭합니다. 색상 선택과 구도가 매우 조화롭네요. 🌟"},
-    {"playerId": "${submissions[1]?.playerId}", "comment": "주제를 잘 이해하고 표현하려 노력한 모습이 보입니다. [구체적인 장점]이 돋보이지만, [개선점]을 보완하면 더욱 좋은 작품이 될 것 같아요! 👍"}
-  ],
-  "summary": "이번 라운드는 '${keyword}'라는 주제로 진행되었습니다. 모든 참가자들이 각자의 개성과 창의력을 발휘한 멋진 작품들을 선보였습니다. 특히 [전체적인 특징이나 패턴]이 인상적이었으며, 다음 라운드가 더욱 기대됩니다! 🎨✨",
-  "evaluationCriteria": "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. 모든 작품을 공정하고 객관적으로 비교 분석했으며, 각 작품의 고유한 장점을 찾아 격려하는 방향으로 코멘트했습니다."
-}
-\`\`\`
-
-**💡 평가 시 주의사항:**
-- 각 작품의 장점을 찾아 격려하는 톤으로 코멘트 작성
-- 구체적이고 건설적인 피드백 제공
-- 점수는 60~100점 범위에서 변별력 있게 부여
-- 코멘트는 최소 2-3줄로 상세하게 작성`
+          text: buildAIEvalPrompt(keyword, submissions)
         },
         // 모든 제출된 그림을 base64로 포함
         ...submissions.map((submission) => ({
@@ -317,39 +333,7 @@ class ChatGPTEvaluator implements AIEvaluator {
       });
 
       // 프롬프트 준비
-      const prompt = `**🎨 AI 그림 평가 챌린지!**
-
-주제: "${keyword}"
-
-안녕하세요! 저는 그림 그리기 게임의 AI 심사위원입니다. 제출된 ${submissions.length}개의 작품을 다음 기준으로 종합 평가하겠습니다:
-
-**📋 평가 기준 (총 100점)**
-1. **주제 연관성 (50점)**: "${keyword}"라는 주제를 얼마나 잘 표현했는가?
-2. **창의성 (30점)**: 독창적이고 참신한 아이디어가 있는가?
-3. **완성도 (20점)**: 그림의 기술적 완성도와 전체적인 완성감
-
-**🎯 평가 결과를 다음 JSON 형식으로만 반환해주세요:**
-
-\`\`\`json
-{
-  "rankings": [
-    {"rank": 1, "playerId": "${submissions[0]?.playerId}", "score": 95},
-    {"rank": 2, "playerId": "${submissions[1]?.playerId}", "score": 88}
-  ],
-  "comments": [
-    {"playerId": "${submissions[0]?.playerId}", "comment": "주제 '${keyword}'를 매우 창의적으로 표현했습니다! 특히 [구체적인 요소]가 인상적이었고, 전체적인 완성도도 훌륭합니다. 색상 선택과 구도가 매우 조화롭네요. 🌟"},
-    {"playerId": "${submissions[1]?.playerId}", "comment": "주제를 잘 이해하고 표현하려 노력한 모습이 보입니다. [구체적인 장점]이 돋보이지만, [개선점]을 보완하면 더욱 좋은 작품이 될 것 같아요! 👍"}
-  ],
-  "summary": "이번 라운드는 '${keyword}'라는 주제로 진행되었습니다. 모든 참가자들이 각자의 개성과 창의력을 발휘한 멋진 작품들을 선보였습니다. 특히 [전체적인 특징이나 패턴]이 인상적이었으며, 다음 라운드가 더욱 기대됩니다! 🎨✨",
-  "evaluationCriteria": "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. 모든 작품을 공정하고 객관적으로 비교 분석했으며, 각 작품의 고유한 장점을 찾아 격려하는 방향으로 코멘트했습니다."
-}
-\`\`\`
-
-**💡 평가 시 주의사항:**
-- 각 작품의 장점을 찾아 격려하는 톤으로 코멘트 작성
-- 구체적이고 건설적인 피드백 제공
-- 점수는 60~100점 범위에서 변별력 있게 부여
-- 코멘트는 최소 2-3줄로 상세하게 작성`;
+      const prompt = buildAIEvalPrompt(keyword, submissions);
 
       console.log(`🤖 ChatGPT 평가 시작: ${submissions.length}개 그림, 제시어: "${keyword}"`);
 
@@ -495,39 +479,7 @@ class ClaudeEvaluator implements AIEvaluator {
       }));
 
       // 프롬프트 준비
-      const prompt = `**🎨 AI 그림 평가 챌린지!**
-
-주제: "${keyword}"
-
-안녕하세요! 저는 그림 그리기 게임의 AI 심사위원입니다. 제출된 ${submissions.length}개의 작품을 다음 기준으로 종합 평가하겠습니다:
-
-**📋 평가 기준 (총 100점)**
-1. **주제 연관성 (50점)**: "${keyword}"라는 주제를 얼마나 잘 표현했는가?
-2. **창의성 (30점)**: 독창적이고 참신한 아이디어가 있는가?
-3. **완성도 (20점)**: 그림의 기술적 완성도와 전체적인 완성감
-
-**🎯 평가 결과를 다음 JSON 형식으로만 반환해주세요:**
-
-\`\`\`json
-{
-  "rankings": [
-    {"rank": 1, "playerId": "${submissions[0]?.playerId}", "score": 95},
-    {"rank": 2, "playerId": "${submissions[1]?.playerId}", "score": 88}
-  ],
-  "comments": [
-    {"playerId": "${submissions[0]?.playerId}", "comment": "주제 '${keyword}'를 매우 창의적으로 표현했습니다! 특히 [구체적인 요소]가 인상적이었고, 전체적인 완성도도 훌륭합니다. 색상 선택과 구도가 매우 조화롭네요. 🌟"},
-    {"playerId": "${submissions[1]?.playerId}", "comment": "주제를 잘 이해하고 표현하려 노력한 모습이 보입니다. [구체적인 장점]이 돋보이지만, [개선점]을 보완하면 더욱 좋은 작품이 될 것 같아요! 👍"}
-  ],
-  "summary": "이번 라운드는 '${keyword}'라는 주제로 진행되었습니다. 모든 참가자들이 각자의 개성과 창의력을 발휘한 멋진 작품들을 선보였습니다. 특히 [전체적인 특징이나 패턴]이 인상적이었으며, 다음 라운드가 더욱 기대됩니다! 🎨✨",
-  "evaluationCriteria": "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. 모든 작품을 공정하고 객관적으로 비교 분석했으며, 각 작품의 고유한 장점을 찾아 격려하는 방향으로 코멘트했습니다."
-}
-\`\`\`
-
-**💡 평가 시 주의사항:**
-- 각 작품의 장점을 찾아 격려하는 톤으로 코멘트 작성
-- 구체적이고 건설적인 피드백 제공
-- 점수는 60~100점 범위에서 변별력 있게 부여
-- 코멘트는 최소 2-3줄로 상세하게 작성`;
+      const prompt = buildAIEvalPrompt(keyword, submissions);
 
       console.log(`🤖 Claude 평가 시작: ${submissions.length}개 그림, 제시어: "${keyword}"`);
 

@@ -16,7 +16,10 @@ type EvaluationResult = {
     playerId: string;
     comment: string;
   }>;
+  summary?: string;
+  evaluationCriteria?: string;
 };
+
 
 const keywords = [
   "고양이",
@@ -98,10 +101,16 @@ export class GameManager {
     `);
     stmt.run(playerId, roomId, nickname, false);
 
-    console.log(
-      `Player ${playerId} (${nickname}) successfully joined room ${roomId}`
-    );
-    return true;
+    console.log(`Player ${playerId} (${nickname}) successfully joined room ${roomId}`)
+
+    // 🔥 플레이어 목록 업데이트 이벤트 추가
+    const players = this.getRoomPlayers(roomId);
+    this.addGameEvent(roomId, "player_joined", {
+      message: `${nickname}님이 입장했습니다.`,
+      players,
+    });
+
+    return true
   }
 
   static addHost(roomId: string, hostId: string, nickname: string): void {
@@ -111,9 +120,16 @@ export class GameManager {
     const stmt = db.prepare(`
       INSERT INTO players (id, room_id, nickname, is_host, has_submitted, score)
       VALUES (?, ?, ?, ?, FALSE, 0)
-    `);
-    stmt.run(hostId, roomId, nickname, true);
-    console.log(`Host successfully added to room: ${roomId}`);
+    `)
+    stmt.run(hostId, roomId, nickname, true)
+    console.log(`Host successfully added to room: ${roomId}`)
+
+    // 🔥 플레이어 목록 업데이트 이벤트 추가
+    const players = this.getRoomPlayers(roomId);
+    this.addGameEvent(roomId, "player_joined", {
+      message: `${nickname}님이 방을 생성했습니다.`,
+      players,
+    });
   }
 
   static getRoom(roomId: string): Room | null {
@@ -537,7 +553,7 @@ export class GameManager {
         }`
       );
 
-      let evaluationResult: EvaluationResult;
+      let evaluationResult: EvaluationResult = { rankings: [], comments: [] }
 
       if (useAI) {
         try {
@@ -546,8 +562,8 @@ export class GameManager {
           const aiEvaluator = await import("./ai-evaluator");
 
           evaluationResult = await aiEvaluator.evaluateDrawingsWithRetry(
-            validSubmissions,
-            room.current_keyword || "그림",
+            submissions,
+            room.current_keyword || '그림',
             modelType as "gemini" | "chatgpt" | "claude"
           );
 
@@ -1156,5 +1172,31 @@ export class GameManager {
       }
       throw error;
     }
+  }
+
+  static getEvents(
+      roomId: string,
+      lastEventId: number
+  ): { id: number; event_type: string; event_data: string }[] {
+    const stmt = db.prepare(
+        "SELECT * FROM game_events WHERE room_id = ? AND id > ?"
+    );
+    const events = stmt.all(roomId, lastEventId) as any[];
+
+    // 이벤트 데이터에 추가 정보 포함 (디버깅용)
+    events.forEach((event) => {
+      const parsedData = JSON.parse(event.event_data || "{}");
+      if (parsedData) {
+        // 이 부분은 디버깅용이므로 타입 에러를 무시합니다.
+        // @ts-ignore
+        event.event_type = parsedData.type;
+        // @ts-ignore
+        event.data_length = event.event_data.length;
+        // @ts-ignore
+        event.created_at = event.created_at;
+      }
+    });
+
+    return events;
   }
 }
