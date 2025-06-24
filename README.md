@@ -1,6 +1,6 @@
-# Pickasso - 실시간 멀티플레이어 그림 그리기 게임
+# pickhaso - 실시간 멀티플레이어 그림 그리기 게임
 
-Pickasso는 Next.js와 TypeScript로 구축된 실시간 멀티플레이어 그림 그리기 게임입니다. 사용자들이 방을 만들어 함께 그림을 그리고 추측하는 재미있는 게임을 즐길 수 있습니다.
+pickhaso는 Next.js와 TypeScript로 구축된 실시간 멀티플레이어 그림 그리기 게임입니다. 사용자들이 방을 만들어 함께 그림을 그리고 추측하는 재미있는 게임을 즐길 수 있습니다.
 
 ## 🎮 주요 기능
 
@@ -49,8 +49,8 @@ Pickasso는 Next.js와 TypeScript로 구축된 실시간 멀티플레이어 그�
 
 1. **저장소 클론**
    ```bash
-   git clone https://github.com/Hana-Open-Banking/pickasso.git
-   cd pickasso
+   git clone https://github.com/Hana-Open-Banking/pickhaso.git
+   cd pickhaso
    ```
 
 2. **의존성 설치**
@@ -89,7 +89,7 @@ pnpm start
 ## 📁 프로젝트 구조
 
 ```
-pickasso/
+pickhaso/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API 라우트
 │   │   ├── drawings/      # 그림 제출 API

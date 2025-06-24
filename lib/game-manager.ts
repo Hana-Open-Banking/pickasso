@@ -182,6 +182,13 @@ export class GameManager {
     // 🔥 서버 측 타이머 시작
     this.startRoomTimer(roomId);
 
+    // 게임 시작 이벤트 추가 (알림창용)
+    this.addGameEvent(roomId, "game_start", {
+      keyword: keyword,
+      timeLimit: 60,
+      message: `주제는 '${keyword}'입니다. 제한시간 60초 동안 마음껏 표현해주세요. 제출하지 않은 그림은 0점 처리됩니다.`
+    });
+
     return keyword;
   }
 

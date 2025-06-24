@@ -46,8 +46,8 @@ export default function LobbyScreen() {
         <div className="text-center mb-8">
           <div className="flex justify-center mb-6 relative h-40">
             <Image
-              src="/pickasso-logo.png"
-              alt="Pickasso Logo"
+              src="/pickhaso-logo.png"
+              alt="pickhaso Logo"
               width={250}
               height={250}
               className="drop-shadow-lg"

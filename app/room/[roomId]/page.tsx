@@ -8,13 +8,20 @@ import GameScreen from "@/components/game-screen"
 import ResultScreen from "@/components/result-screen"
 import { mockSocket } from "@/utils/mock-socket"
 import { useServerEvents } from "@/hooks/use-server-events"
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function RoomPage() {
   const params = useParams()
   const router = useRouter()
   const roomId = params.roomId as string
   const { currentPhase, nickname, setRoomId, leaveRoom } = useGameStore()
-  const { isConnected } = useServerEvents(roomId)
+  const { isConnected, gameStartAlert, setGameStartAlert } = useServerEvents(roomId)
 
   console.log("🏠 RoomPage render:", { roomId, currentPhase, nickname, isConnected })
   console.log("🏠 Current game state:", useGameStore.getState())
@@ -132,6 +139,25 @@ export default function RoomPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* 게임 시작 알림창 */}
+      <AlertDialog
+        open={gameStartAlert.show}
+        onOpenChange={(open) => {
+          if (!open) {
+            setGameStartAlert({ show: false, keyword: "", message: "" });
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>🎨 게임 시작!</AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              {gameStartAlert.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {currentPhase === "lobby" && <LobbyScreen />}
       {currentPhase === "drawing" && <GameScreen />}
       {currentPhase === "scoring" && <GameScreen />}

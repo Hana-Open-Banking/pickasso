@@ -73,14 +73,14 @@ export default function HomePage() {
         <div className="text-center">
           <div className="flex justify-center mb-6 relative h-40">
             <Image
-              src="/pickasso-logo.png"
-              alt="Pickasso Logo"
+              src="/pickhaso-logo.png"
+              alt="Pickhaso Logo"
               width={250}
               height={250}
               className="drop-shadow-lg"
             />
           </div>
-          <h1 className="text-4xl font-bold text-gray-800 mb-2 font-[Pretendard]">PICKASSO</h1>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2 font-[Pretendard]">PICKHASO</h1>
           <p className="text-gray-600 font-medium">친구들과 함께 그림을 그리고 AI가 채점해요! 🎨</p>
         </div>
 

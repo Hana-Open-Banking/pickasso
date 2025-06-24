@@ -21,7 +21,7 @@
 }]]></component>
   <component name="GithubPullRequestsUISettings"><![CDATA[{
   "selectedUrlAndAccountId": {
-    "url": "https://github.com/Hana-Open-Banking/pickasso.git",
+    "url": "https://github.com/Hana-Open-Banking/pickhaso.git",
     "accountId": "bd036f10-d41b-441b-9cb3-cff7ece4e728"
   }
 }]]></component>
@@ -40,7 +40,7 @@
     "git-widget-placeholder": "main",
     "ignore.virus.scanning.warn.message": "true",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "C:/Users/user/Desktop/pickasso",
+    "last_opened_file_path": "C:/Users/user/Desktop/pickhaso",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",

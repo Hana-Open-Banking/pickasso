@@ -6,6 +6,8 @@ export async function GET(
   { params }: { params: { roomId: string } }
 ) {
   const roomId = params.roomId;
+  const { searchParams } = new URL(request.url);
+  const lastEventId = parseInt(searchParams.get("lastEventId") || "0", 10);
 
   // Server-Sent Events 설정
   const encoder = new TextEncoder();
@@ -20,17 +22,17 @@ export async function GET(
       // 주기적으로 게임 상태 확인 및 전송
       const interval = setInterval(() => {
         try {
-          // 최근 이벤트 가져오기
+          // lastEventId 이후의 새로운 이벤트만 가져오기
           const events = db
             .prepare(
               `
             SELECT * FROM game_events 
-            WHERE room_id = ? 
-            ORDER BY created_at DESC 
+            WHERE room_id = ? AND id > ?
+            ORDER BY id DESC 
             LIMIT 10
           `
             )
-            .all(roomId);
+            .all(roomId, lastEventId) as GameEvent[];
 
           // console.log(`📡 SSE: Room ${roomId} events query result:`, events)
           console.log(`📡 SSE: Events count:`, events?.length || 0);
@@ -125,9 +127,15 @@ export async function GET(
           //   latestEventData: events?.[0]?.event_data || 'none'
           // })
 
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
-          );
+          // 새로운 이벤트가 있거나, 방/플레이어 정보가 필요한 경우에만 전송
+          if (events.length > 0 || !lastEventId) { // 최초 연결 시에는 항상 전송
+             controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
+            );
+          } else {
+            // 이벤트가 없을 때는 간단한 keep-alive 메시지만 보내서 연결 유지
+            controller.enqueue(encoder.encode(`: keep-alive\n\n`));
+          }
         } catch (error: unknown) {
           console.error("SSE Error:", error);
         }

@@ -13,7 +13,6 @@ interface ServerEvent {
 }
 
 export function useServerEvents(roomId: string) {
-  const [isConnected, setIsConnected] = useState(false);
   const {
     setPlayers,
     setPhase,
@@ -21,16 +20,31 @@ export function useServerEvents(roomId: string) {
     setScores,
     setWinner,
     setTimeLeft,
+    currentPhase,
     setAIEvaluation,
   } = useGameStore();
-
-  // 타이머 관리를 위한 ref 사용
+  const [isConnected, setIsConnected] = useState(false);
+  const lastPhaseRef = useRef(currentPhase);
+  const isProcessingResultsRef = useRef(false);
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastPhaseRef = useRef<string>("");
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [gameStartAlert, setGameStartAlert] = useState<{
+    show: boolean;
+    keyword: string;
+    message: string;
+  }>({ show: false, keyword: "", message: "" });
+  const lastEventIdRef = useRef(0);
+  const processedGameStartRef = useRef(false);
+  const processedRoundCompletedRef = useRef(false);
 
-  // 결과 처리 중복 방지를 위한 ref 추가
-  const isProcessingResultsRef = useRef<boolean>(false);
+  // localStorage에서 lastEventId 복원
+  useEffect(() => {
+    const savedLastEventId = localStorage.getItem(`lastEventId_${roomId}`);
+    if (savedLastEventId) {
+      lastEventIdRef.current = parseInt(savedLastEventId, 10);
+      console.log(`Restored lastEventId from localStorage: ${lastEventIdRef.current}`);
+    }
+  }, [roomId]);
 
   // ✅ AI 평가 데이터 검증 및 정규화 함수 추가
   const normalizeAIEvaluation = (
@@ -342,7 +356,9 @@ export function useServerEvents(roomId: string) {
   const connectSSE = () => {
     if (!roomId) return null;
 
-    const eventSource = new EventSource(`/api/events/${roomId}`);
+    const eventSource = new EventSource(
+      `/api/events/${roomId}?lastEventId=${lastEventIdRef.current}`
+    );
 
     eventSource.onopen = () => {
       setIsConnected(true);
@@ -423,84 +439,105 @@ export function useServerEvents(roomId: string) {
             }
           }
 
-          // 최근 이벤트 처리 - round_completed에 집중
+          // 최근 이벤트 처리 - 모든 이벤트를 순회하도록 변경
           if (data.events && data.events.length > 0) {
-            console.log("📨 Recent events:", data.events);
-            const latestEvent = data.events[0];
-            console.log("📨 Latest event:", latestEvent);
+            // 이벤트 ID 업데이트: 받은 이벤트 중 가장 최신 ID로 업데이트
+            lastEventIdRef.current = data.events[0].id;
+            // localStorage에 저장
+            localStorage.setItem(`lastEventId_${roomId}`, lastEventIdRef.current.toString());
+            console.log(`Updated lastEventId to: ${lastEventIdRef.current}`);
 
-            if (latestEvent.event_type === "game_started") {
-              const eventData = JSON.parse(latestEvent.event_data || "{}");
-              console.log("Processing game_started event:", eventData);
-
-              // 🔥 타이머가 이미 실행 중이면 중복 시작 방지
-              if (gameTimerRef.current) {
-                console.log("🚫 Timer already running, skipping game_started");
-                return;
-              }
-
-              setPhase("drawing");
-              setKeyword(eventData.keyword);
-              setTimeLeft(60);
-              console.log("⏰ Starting timer from game_started event");
-              startGameTimer();
-            } else if (latestEvent.event_type === "next_round_started") {
-              const eventData = JSON.parse(latestEvent.event_data || "{}");
-              console.log("Processing next_round_started event:", eventData);
-
-              // 🔥 타이머가 이미 실행 중이면 중복 시작 방지
-              if (gameTimerRef.current) {
-                console.log(
-                  "🚫 Timer already running, skipping next_round_started"
-                );
-                return;
-              }
-
-              setPhase("drawing");
-              setKeyword(eventData.keyword);
-              setTimeLeft(60);
-              console.log("⏰ Starting timer from next_round_started event");
-              startGameTimer();
-            } else if (latestEvent.event_type === "ai_evaluation_started") {
-              const eventData = JSON.parse(latestEvent.event_data);
-              console.log("🤖 AI 평가 시작 알림:", eventData);
-              setPhase("scoring");
-            } else if (latestEvent.event_type === "round_completed") {
-              // round_completed 이벤트 처리 개선
-              try {
-                const eventData = JSON.parse(latestEvent.event_data);
-                console.log("🎊 Round completed event received:", eventData);
-
-                // 중복 처리 방지
-                if (isProcessingResultsRef.current) {
-                  console.log(
-                    "🚫 Already processing results, skipping SSE event..."
-                  );
-                  return;
+            // 모든 이벤트를 시간 역순(과거->최신)으로 처리
+            for (const latestEvent of [...data.events].reverse()) {
+              console.log("📨 Processing event:", latestEvent);
+              
+              // round_completed 이벤트를 우선 처리
+              if (latestEvent.event_type === "round_completed") {
+                if (processedRoundCompletedRef.current) {
+                  console.log("🚫 round_completed event already processed, skipping");
+                  continue;
                 }
-
-                isProcessingResultsRef.current = true;
-
-                // 공통 결과 처리 함수 사용
-                processGameResults(eventData, "SSE");
-              } catch (parseError) {
-                console.error(
-                  "💥 round_completed 이벤트 파싱 오류:",
-                  parseError
-                );
-                console.error("💥 원본 이벤트 데이터:", latestEvent.event_data);
-
-                // 파싱 실패 시 API에서 데이터 가져오기
-                setPhase("result");
-                clearGameTimer();
-                fetchGameResults(roomId, true);
+                
+                try {
+                  const eventData = JSON.parse(latestEvent.event_data);
+                  console.log("🎊 Processing round_completed event:", eventData);
+                  
+                  if (isProcessingResultsRef.current) {
+                    console.log("🚫 Already processing results, skipping SSE event...");
+                    continue;
+                  }
+                  
+                  processedRoundCompletedRef.current = true;
+                  isProcessingResultsRef.current = true;
+                  processGameResults(eventData, "SSE");
+                } catch (parseError) {
+                  console.error("💥 round_completed 이벤트 파싱 오류:", parseError);
+                  setPhase("result");
+                  clearGameTimer();
+                  fetchGameResults(roomId, true);
+                }
+                continue;
               }
-            } else if (latestEvent.event_type === "ai_evaluation_failed") {
-              const eventData = JSON.parse(latestEvent.event_data);
-              console.log("💥 AI 평가 실패 알림:", eventData);
-              setPhase("result");
+              
+              if (latestEvent.event_type === "game_start") {
+                // 이미 처리한 game_start 이벤트인지 확인
+                if (processedGameStartRef.current) {
+                  console.log("🚫 game_start event already processed, skipping");
+                  continue;
+                }
+                
+                const eventData = JSON.parse(latestEvent.event_data || "{}");
+                console.log("Processing game_start event:", eventData);
+                
+                // 처리 완료 플래그 설정
+                processedGameStartRef.current = true;
+                
+                setGameStartAlert({
+                  show: true,
+                  keyword: eventData.keyword,
+                  message:
+                    eventData.message ||
+                    `주제는 '${eventData.keyword}'입니다. 제한시간 60초 동안 마음껏 표현해주세요. 제출하지 않은 그림은 0점 처리됩니다.`,
+                });
+                setTimeout(() => {
+                  setGameStartAlert({ show: false, keyword: "", message: "" });
+                }, 2000);
+                if (!gameTimerRef.current) {
+                  setPhase("drawing");
+                  setKeyword(eventData.keyword);
+                  setTimeLeft(60);
+                  startGameTimer();
+                }
+              } else if (latestEvent.event_type === "next_round_started") {
+                const eventData = JSON.parse(latestEvent.event_data || "{}");
+                console.log("Processing next_round_started event:", eventData);
+                if (gameTimerRef.current) {
+                  console.log(
+                    "🚫 Timer already running, skipping next_round_started"
+                  );
+                  continue;
+                }
+                setPhase("drawing");
+                setKeyword(eventData.keyword);
+                setTimeLeft(60);
+                console.log("⏰ Starting timer from next_round_started event");
+                startGameTimer();
+              } else if (latestEvent.event_type === "ai_evaluation_started") {
+                // 이미 결과가 나온 경우 AI 평가 시작 이벤트 무시
+                if (processedRoundCompletedRef.current) {
+                  console.log("🚫 Results already processed, ignoring ai_evaluation_started");
+                  continue;
+                }
+                
+                const eventData = JSON.parse(latestEvent.event_data);
+                console.log("🤖 AI 평가 시작 알림:", eventData);
+                setPhase("scoring");
+              } else if (latestEvent.event_type === "ai_evaluation_failed") {
+                const eventData = JSON.parse(latestEvent.event_data);
+                console.log("💥 AI 평가 실패 알림:", eventData);
+                setPhase("result");
+              }
             }
-            // ... 기타 이벤트 처리는 동일
           }
         }
       } catch (error) {
@@ -526,9 +563,17 @@ export function useServerEvents(roomId: string) {
   };
 
   useEffect(() => {
-    const eventSource = connectSSE();
+    let eventSource: EventSource | null = null;
+    
+    // 중복 연결 방지를 위한 약간의 지연
+    const timer = setTimeout(() => {
+      if (!eventSource) {
+        eventSource = connectSSE();
+      }
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       if (eventSource) {
         eventSource.close();
       }
@@ -539,6 +584,10 @@ export function useServerEvents(roomId: string) {
       }
       // cleanup 시 플래그 초기화
       isProcessingResultsRef.current = false;
+      processedGameStartRef.current = false;
+      processedRoundCompletedRef.current = false;
+      // localStorage 정리
+      localStorage.removeItem(`lastEventId_${roomId}`);
     };
   }, [
     roomId,
@@ -550,5 +599,9 @@ export function useServerEvents(roomId: string) {
     setTimeLeft,
   ]);
 
-  return { isConnected };
+  return { 
+    isConnected, 
+    gameStartAlert, 
+    setGameStartAlert 
+  };
 }
