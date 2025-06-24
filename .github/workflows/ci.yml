@@ -14,8 +14,8 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v2
+    - name: Setup npm
+      uses: npm/action-setup@v2
       with:
         version: 8
     
@@ -23,13 +23,13 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'pnpm'
+        cache: 'npm'
     
     - name: Install dependencies
-      run: pnpm install
+      run: npm install
     
     - name: Run linting
-      run: pnpm lint
+      run: npm lint
     
     - name: Build project
-      run: pnpm build 
+      run: npm build
