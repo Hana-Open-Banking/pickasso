@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server"
-import db from "@/lib/db"
+import db, { type Room, type Player, type GameEvent } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { roomId: string } }) {
   const roomId = params.roomId
@@ -25,23 +25,23 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
           `)
             .all(roomId)
 
-          console.log(`📡 SSE: Room ${roomId} events query result:`, events)
+          // console.log(`📡 SSE: Room ${roomId} events query result:`, events)
           console.log(`📡 SSE: Events count:`, events?.length || 0)
-          console.log(`📡 SSE: Latest event:`, events?.[0])
-          
+          // console.log(`📡 SSE: Latest event:`, events?.[0])
+
           // 디버깅: 모든 이벤트 확인
           if (events && events.length > 0) {
             events.forEach((event, index) => {
-              console.log(`📡 SSE: Event ${index}:`, {
-                id: event.id,
-                room_id: event.room_id,
-                event_type: event.event_type,
-                has_event_data: !!event.event_data,
-                event_data_length: event.event_data?.length || 0,
-                event_data_preview: event.event_data?.substring(0, 100) + '...',
-                created_at: event.created_at
-              })
-              
+              // console.log(`📡 SSE: Event ${index}:`, {
+              //   id: event.id,
+              //   room_id: event.room_id,
+              //   event_type: event.event_type,
+              //   has_event_data: !!event.event_data,
+              //   event_data_length: event.event_data?.length || 0,
+              //   event_data_preview: event.event_data?.substring(0, 100) + '...',
+              //   created_at: event.created_at
+              // })
+
               // round_completed 이벤트인 경우 상세 확인
               if (event.event_type === 'round_completed' && event.event_data) {
                 try {
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
                     hasSummary: !!eventData.aiEvaluation?.summary,
                     hasEvaluationCriteria: !!eventData.aiEvaluation?.evaluationCriteria
                   })
-                } catch (parseError) {
+                } catch (parseError: unknown) {
                   console.error(`📡 SSE: Failed to parse round_completed event:`, parseError)
                 }
               }
@@ -65,12 +65,12 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
             console.log(`📡 SSE: No events found for room ${roomId}`)
             // 전체 이벤트 테이블 확인
             const allEvents = db.prepare("SELECT id, room_id, event_type, created_at FROM game_events ORDER BY created_at DESC LIMIT 5").all()
-            console.log(`📡 SSE: Recent events in database:`, allEvents)
+            // console.log(`📡 SSE: Recent events in database:`, allEvents)
           }
 
           // 현재 방 상태 가져오기
-          const room = db.prepare("SELECT * FROM rooms WHERE id = ?").get(roomId) as any
-          const players = db.prepare("SELECT * FROM players WHERE room_id = ?").all(roomId) as any[]
+          const room = db.prepare("SELECT * FROM rooms WHERE id = ?").get(roomId) as Room
+          const players = db.prepare("SELECT * FROM players WHERE room_id = ?").all(roomId) as Player[]
 
           // console.log(`SSE: Room ${roomId} details:`, {
           //   id: room?.id,
@@ -94,16 +94,16 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
             events,
           }
 
-          console.log(`📡 SSE: Sending data for room ${roomId}:`, {
-            roomStatus: room?.status,
-            playerCount: players?.length,
-            eventCount: events?.length,
-            latestEvent: events?.[0]?.event_type || 'none',
-            latestEventData: events?.[0]?.event_data || 'none'
-          })
+          // console.log(`📡 SSE: Sending data for room ${roomId}:`, {
+          //   roomStatus: room?.status,
+          //   playerCount: players?.length,
+          //   eventCount: events?.length,
+          //   latestEvent: events?.[0]?.event_type || 'none',
+          //   latestEventData: events?.[0]?.event_data || 'none'
+          // })
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
-        } catch (error) {
+        } catch (error: unknown) {
           console.error("SSE Error:", error)
         }
       }, 2000) // 2초마다 업데이트

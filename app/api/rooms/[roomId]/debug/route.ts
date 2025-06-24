@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GameManager } from '@/lib/game-manager'
-import db from '@/lib/db'
+import db, { type GameEvent } from '@/lib/db'
 
 export async function GET(request: NextRequest, { params }: { params: { roomId: string } }) {
   try {
@@ -8,10 +8,10 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
 
     // 방 상태 확인
     const room = GameManager.getRoom(roomId)
-    
+
     // 플레이어 상태 확인
     const players = GameManager.getRoomPlayers(roomId)
-    
+
     // 그림 데이터 확인
     const drawings = db.prepare(`
       SELECT id, player_id, round_number, LENGTH(canvas_data) as canvas_length, keyword, score
@@ -19,26 +19,30 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
       WHERE room_id = ?
       ORDER BY submitted_at DESC
     `).all(roomId)
-    
+
     // 게임 이벤트 확인
     const events = db.prepare(`
       SELECT * FROM game_events WHERE room_id = ?
-    `).all(roomId)
-    
+    `).all(roomId) as GameEvent[]
+
     // 🔍 메모리 상태 직접 확인
-    const globalThis = global as any
+    // Define a type for the global object with custom properties
+    const globalThis = global as {
+      __gameEvents?: Map<number, GameEvent>;
+      __eventIdCounter?: number;
+    }
     const memoryEvents = globalThis.__gameEvents || new Map()
-    const memoryEventsList = Array.from(memoryEvents.values()).filter((e: any) => e.room_id === roomId)
+    const memoryEventsList = Array.from(memoryEvents.values()).filter((e: GameEvent) => e.room_id === roomId)
     console.log(`🔍 Memory events for room ${roomId}:`, memoryEventsList.length)
-    
+
     // round_completed 이벤트의 실제 데이터 확인 (최신 이벤트 사용)
-    const roundCompletedEvent = events.filter((e: any) => e.event_type === 'round_completed')[0] as any
-    
+    const roundCompletedEvent = events.filter((e) => e.event_type === 'round_completed')[0]
+
     let roundCompletedData = null
     if (roundCompletedEvent?.event_data) {
       try {
         roundCompletedData = JSON.parse(roundCompletedEvent.event_data)
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Failed to parse round_completed data:', error)
       }
     }
@@ -60,7 +64,7 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
         keyword: d.keyword,
         score: d.score
       })),
-      events: events.map((e: any) => ({
+      events: events.map((e) => ({
         id: e.id,
         event_type: e.event_type,
         data_length: e.event_data?.length || 0,
@@ -70,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
       memoryStatus: {
         totalMemoryEvents: memoryEvents.size,
         roomMemoryEvents: memoryEventsList.length,
-        memoryEventTypes: memoryEventsList.map((e: any) => e.event_type),
+        memoryEventTypes: memoryEventsList.map((e: GameEvent) => e.event_type),
         eventIdCounter: globalThis.__eventIdCounter || 0
       },
       roundCompletedData: roundCompletedData ? {
@@ -83,7 +87,7 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
         completedAt: roundCompletedData.completedAt
       } : null
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Debug API error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch debug data' },
@@ -96,10 +100,10 @@ export async function POST(request: NextRequest, { params }: { params: { roomId:
   try {
     const roomId = params.roomId
     const body = await request.json()
-    
+
     if (body.action === 'recreate_test_data') {
       console.log(`🔧 Recreating test data for room ${roomId}`)
-      
+
       // 테스트용 AI 평가 데이터 생성
       const testAiEvaluation = {
         rankings: [
@@ -113,7 +117,7 @@ export async function POST(request: NextRequest, { params }: { params: { roomId:
         summary: `이번 라운드는 "꽃"을 주제로 2명이 참여했습니다. 모든 작품에서 각자의 창의성과 개성이 잘 드러났으며, 주제를 나름대로 해석한 다양한 접근 방식이 인상적이었습니다! 🌟`,
         evaluationCriteria: "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다."
       }
-      
+
       // round_completed 이벤트 재생성
       GameManager.addGameEvent(roomId, "round_completed", {
         scores: { '1750664240682': 84, '1750664248192': 63 },
@@ -121,19 +125,19 @@ export async function POST(request: NextRequest, { params }: { params: { roomId:
         aiEvaluation: testAiEvaluation,
         completedAt: new Date().toISOString()
       })
-      
+
       return NextResponse.json({
         success: true,
         message: 'Test data recreated',
         testData: testAiEvaluation
       })
     }
-    
+
     return NextResponse.json(
       { error: 'Invalid action' },
       { status: 400 }
     )
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Debug POST error:', error)
     return NextResponse.json(
       { error: 'Failed to process debug action' },

@@ -11,15 +11,17 @@ import { Label } from "@/components/ui/label"
 import { Users, Plus } from "lucide-react"
 import { useGameStore } from "@/store/game-store"
 import { useToast } from "@/hooks/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function HomePage() {
   const router = useRouter()
-  const { setNickname, createRoom, joinRoom, setRoomId, setIsHost } = useGameStore()
+  const { setNickname, createRoom, joinRoom, setRoomId, setIsHost, setModelType } = useGameStore()
   const { toast } = useToast()
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [roomNumber, setRoomNumber] = useState("")
   const [nicknameInput, setNicknameInput] = useState("")
+  const [selectedModel, setSelectedModel] = useState<"gemini" | "chatgpt" | "claude">("gemini")
   const [isJoining, setIsJoining] = useState(false)
 
   const handleJoinRoom = async () => {
@@ -48,6 +50,7 @@ export default function HomePage() {
 
     setIsJoining(true)
     setNickname(nicknameInput.trim())
+    setModelType(selectedModel)
 
     const roomId = await createRoom()
     if (roomId) {
@@ -179,6 +182,25 @@ export default function HomePage() {
                 maxLength={10}
                 className="border-2 border-pink-100 focus:border-pink-300"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="modelType" className="text-gray-700">AI 모델 선택</Label>
+              <Select
+                value={selectedModel}
+                onValueChange={(value) => setSelectedModel(value as "gemini" | "chatgpt" | "claude")}
+              >
+                <SelectTrigger className="w-full border-2 border-pink-100 focus:border-pink-300">
+                  <SelectValue placeholder="AI 모델을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gemini">Google Gemini</SelectItem>
+                  <SelectItem value="chatgpt">OpenAI ChatGPT</SelectItem>
+                  <SelectItem value="claude">Anthropic Claude</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 mt-1">
+                선택한 AI 모델이 그림을 평가합니다. 각 모델은 다른 특성을 가지고 있습니다.
+              </p>
             </div>
             <Button
               onClick={handleCreateRoom}
