@@ -142,11 +142,11 @@ function buildAIEvalPrompt(keyword: string, submissions: DrawingSubmission[]): s
    - **문자열이 중간에 끊기지 않도록 주의하세요.**
 3. 각 \`playerId\`에 대해 정확히 하나의 평가만 작성하세요.
 4. \`score\`는 0~100점 사이 정수이며, 반드시 정수값으로 작성해야 합니다.
-5. 문자열은 가능한 한 짧고 명확하게 작성하세요 (30자 이하 권장).
+5. 문자열은 가능한 명확하게 작성하세요 (60자 이하 권장).
 6. 평가 대상의 playerId는 다음 목록 내에서만 사용하세요: [${allowedIds}]
 7. **중요: 모든 JSON 키와 값이 같은 줄에 있어야 합니다. 줄바꿈으로 값이 분리되지 않도록 하세요.**
 8. **응답 내용은 반드시 한글로 작성**하세요.
-9. **comment는 재치있는 말투로 작성**하되, 짧고 간결하게 작성하세요.
+9. **comment는 재치있는 말투로 작성**하되, 반드시 **100자 ~ 200자 사이로 작성**하세요.
 10. **절대로 중복된 키를 사용하지 마세요.** 예: {"playerId": "123", "playerId": "456"} ❌
 
 ---
@@ -180,7 +180,7 @@ function buildAIEvalPrompt(keyword: string, submissions: DrawingSubmission[]): s
 
 ✅ 올바른 JSON 예시:
 \`\`\`json
-{"playerId": "1234", "comment": "그림이 매우 창의적이고 주제를 잘 표현했습니다."}
+{"playerId": "1234", "comment": "그림이 매우 창의적이고 주제를 잘 표현했습니다. 그림의 이러한 부분은 어떻게 느껴지고, 저런 부분은 이러이러하게 느껴져."}
 \`\`\`
 
 ❌ 잘못된 JSON 예시:
