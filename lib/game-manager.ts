@@ -47,6 +47,8 @@ const keywords = [
 export class GameManager {
   // 🔥 방별 타이머 관리를 위한 맵 추가
   private static roomTimers: Map<string, NodeJS.Timeout> = new Map();
+  // 잠재적으로 비활성 상태인 호스트를 추적하기 위한 맵
+  private static potentiallyInactiveHosts: Map<string, { count: number, lastChecked: number }> = new Map();
 
   static createRoom(
     hostId: string,
@@ -1113,7 +1115,8 @@ export class GameManager {
       });
 
       // 검증: 생성된 이벤트 확인
-      const verifyEvent = db
+      // 이벤트 검증을 위한 쿼리 실행
+      const queryResult = db
         .prepare(
           `
         SELECT id, room_id, event_type, created_at, LENGTH(event_data) as data_length
@@ -1124,6 +1127,17 @@ export class GameManager {
       `
         )
         .get(roomId, eventType);
+
+      // 타입 안전하게 처리
+      type GameEvent = { 
+        id: number; 
+        room_id: string; 
+        event_type: string; 
+        created_at: string; 
+        data_length: number 
+      };
+
+      const verifyEvent = queryResult as unknown as GameEvent | undefined;
 
       console.log(`🔍 Event verification:`, {
         found: !!verifyEvent,
@@ -1205,5 +1219,108 @@ export class GameManager {
     });
 
     return events;
+  }
+
+  static getAllRooms(): Room[] {
+    console.log(`Getting all rooms`);
+    const stmt = db.prepare("SELECT * FROM rooms");
+    const queryResult = stmt.all();
+    const rooms = queryResult as unknown as Room[];
+    console.log(`Found ${rooms.length} rooms`);
+    return rooms;
+  }
+
+  static checkInactivePlayers(): void {
+    console.log(`Checking for inactive players...`);
+
+    // Get all rooms
+    const rooms = this.getAllRooms();
+    console.log(`Found ${rooms.length} rooms to check for inactive players`);
+
+    // Current timestamp for comparison
+    const now = Date.now();
+
+    // Threshold for inactivity (30 minutes in milliseconds)
+    const inactivityThreshold = 30 * 60 * 1000;
+
+    let inactivePlayersRemoved = 0;
+    let roomsDeleted = 0;
+
+    // Check each room
+    for (const room of rooms) {
+      // Get all players in the room
+      const players = this.getRoomPlayers(room.id);
+
+      // Skip empty rooms
+      if (players.length === 0) {
+        console.log(`Room ${room.id} is empty, deleting...`);
+        this.deleteRoom(room.id);
+        roomsDeleted++;
+        continue;
+      }
+
+      // Check each player's last activity
+      for (const player of players) {
+        // Skip if player is a host
+        if (player.is_host) {
+          continue;
+        }
+
+        // Get last activity timestamp (last_active or joined_at)
+        const lastActivity = new Date(player.last_active || player.joined_at).getTime();
+
+        // Check if player is inactive
+        if (now - lastActivity > inactivityThreshold) {
+          console.log(`Player ${player.id} (${player.nickname}) in room ${room.id} is inactive, removing...`);
+          this.removePlayer(room.id, player.id);
+          inactivePlayersRemoved++;
+        }
+      }
+    }
+
+    console.log(`Inactive players check completed: ${inactivePlayersRemoved} players removed, ${roomsDeleted} empty rooms deleted`);
+  }
+
+  static getAllPlayers(): Player[] {
+    console.log(`Getting all players`);
+    const stmt = db.prepare("SELECT * FROM players");
+    const allPlayers = stmt.all() as Player[];
+    console.log(`Found ${allPlayers.length} players`);
+    return allPlayers;
+  }
+
+  static updatePlayerActivity(playerId: string): void {
+    console.log(`Updating activity for player ${playerId}`);
+
+    // Find the player in any room
+    const player = this.getAllPlayers().find(p => p.id === playerId);
+
+    if (!player) {
+      console.log(`Player ${playerId} not found for activity update`);
+      return;
+    }
+
+    // Update the player's last_active timestamp
+    const stmt = db.prepare(`
+      UPDATE players 
+      SET last_active = ? 
+      WHERE id = ?
+    `);
+    stmt.run(new Date().toISOString(), playerId);
+
+    console.log(`Updated activity timestamp for player ${playerId}`);
+
+    // If this player is a host, remove them from potentially inactive hosts
+    if (player.is_host) {
+      const hostKey = `${player.room_id}:${playerId}`;
+      if (this.potentiallyInactiveHosts.has(hostKey)) {
+        console.log(`Removing host ${playerId} from potentially inactive hosts`);
+        this.potentiallyInactiveHosts.delete(hostKey);
+      }
+    }
+  }
+
+  static getPotentiallyInactiveHosts(): Map<string, { count: number, lastChecked: number }> {
+    return this.potentiallyInactiveHosts;
   }
 }
