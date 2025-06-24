@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext, type CarouselApi } from "@/components/ui/carousel"
-import { Trophy, Medal, Award, RotateCcw, Home, Crown, Sparkles, Bot, Image as ImageIcon } from "lucide-react"
+import { Trophy, Medal, Award, RotateCcw, Home, Crown, Sparkles, Bot, Image as ImageIcon, ExternalLink, Download } from "lucide-react"
+import * as htmlToImage from 'html-to-image'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useGameStore } from "@/store/game-store"
 import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,11 +35,13 @@ export default function ResultScreen() {
   const resetGame = useGameStore((state) => state.resetGame)
   const leaveRoom = useGameStore((state) => state.leaveRoom)
   const currentPhase = useGameStore((state) => state.currentPhase)
-  
+
   const [showLeaveAlert, setShowLeaveAlert] = useState(false)
+  const [showGalleryModal, setShowGalleryModal] = useState(false)
   const [forceUpdate, setForceUpdate] = useState(0)
   const [drawings, setDrawings] = useState<Record<string, string>>({})
   const [carouselApi, setCarouselApi] = useState<CarouselApi | null>(null)
+  const imageContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
   // 🔥 디버깅용: 강제 리렌더링 함수
@@ -55,7 +59,7 @@ export default function ResultScreen() {
   console.log("🎨 Scores:", scores)
   console.log("🎨 Winner:", winner)
   console.log("🎨 AI Evaluation:", aiEvaluation)
-  
+
   useEffect(() => {
     console.log("🔄 ResultScreen mounted/updated")
     console.log("🔄 Current game state:", {
@@ -115,13 +119,13 @@ export default function ResultScreen() {
     console.log("🔍 AI Rankings length:", aiEvaluation?.rankings?.length || 0)
     console.log("🔍 Players length:", players.length)
     console.log("🔍 All players:", players)
-    
+
     if (aiEvaluation && aiEvaluation.rankings && aiEvaluation.rankings.length > 0) {
       console.log("🔍 Using AI rankings for sorting")
       // ✅ 원본 배열을 수정하지 않도록 복사본 생성
       const sortedRankings = [...aiEvaluation.rankings].sort((a, b) => a.rank - b.rank)
       console.log("🔍 Sorted AI rankings:", sortedRankings)
-      
+
       // ✅ AI rankings 기반으로 정렬된 플레이어 배열 생성
       const sortedPlayers = sortedRankings.map(ranking => {
         const player = players.find(p => p.id === ranking.playerId)
@@ -149,13 +153,13 @@ export default function ResultScreen() {
           }
         }
       }).filter(player => player !== null)
-      
+
       console.log("🔍 Sorted players by AI ranking:", sortedPlayers)
-      
+
       // ✅ AI rankings에 없는 플레이어들 추가 (혹시 누락된 경우 대비)
       const rankedPlayerIds = new Set(sortedRankings.map(r => r.playerId))
       const unrankedPlayers = players.filter(p => !rankedPlayerIds.has(p.id))
-      
+
       if (unrankedPlayers.length > 0) {
         console.log("🔍 Found unranked players:", unrankedPlayers)
         unrankedPlayers.forEach(player => {
@@ -167,7 +171,7 @@ export default function ResultScreen() {
           })
         })
       }
-      
+
       return sortedPlayers
     } else {
       console.log("🔍 Using default scores for sorting")
@@ -220,12 +224,55 @@ export default function ResultScreen() {
     router.push("/")
   }
 
+  const handleSaveImage = async () => {
+    if (!imageContainerRef.current) return
+
+    try {
+      console.log("🖼️ 이미지 저장 중...")
+
+      // 저장 전 스타일 조정 (더 나은 이미지 품질을 위해)
+      const originalPadding = imageContainerRef.current.style.padding
+      const originalBorderRadius = imageContainerRef.current.style.borderRadius
+
+      // 이미지 저장을 위한 스타일 적용
+      imageContainerRef.current.style.padding = '20px'
+      imageContainerRef.current.style.borderRadius = '12px'
+
+      // 이미지 생성
+      const dataUrl = await htmlToImage.toPng(imageContainerRef.current, {
+        quality: 0.95,
+        pixelRatio: 2, // 고해상도 이미지
+        backgroundColor: 'white'
+      })
+
+      // 원래 스타일로 복원
+      imageContainerRef.current.style.padding = originalPadding
+      imageContainerRef.current.style.borderRadius = originalBorderRadius
+
+      // 현재 날짜와 시간을 파일명에 포함
+      const now = new Date()
+      const dateStr = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`
+
+      // 다운로드 링크 생성
+      const link = document.createElement('a')
+      link.download = `pickasso-${nickname}-${dateStr}${timeStr}.png`
+      link.href = dataUrl
+      link.click()
+
+      console.log("🖼️ 이미지 저장 완료")
+    } catch (error) {
+      console.error("Error saving image:", error)
+      alert("이미지 저장 중 오류가 발생했습니다. 다시 시도해주세요.")
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 p-4">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-4">🎨 게임 결과</h1>
-          
+
           <div className="flex items-center justify-center gap-2">
             <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2 text-white">
               <div className="flex items-center gap-2">
@@ -273,7 +320,7 @@ export default function ResultScreen() {
                 {sortedPlayers.map((player, index) => {
                   const aiRanking = aiEvaluation?.rankings?.find(r => r.playerId === player.id)
                   const displayScore = (player as any).aiScore !== undefined ? (player as any).aiScore : (aiRanking ? aiRanking.score : (scores[player.id] || 0))
-                  
+
                   console.log(`🎨 Rendering player ${index}:`, {
                     player: player.nickname,
                     playerId: player.id,
@@ -282,7 +329,7 @@ export default function ResultScreen() {
                     scoreFromStore: scores[player.id],
                     displayScore
                   })
-                  
+
                   return (
                     <div
                       key={player.id}
@@ -363,25 +410,25 @@ export default function ResultScreen() {
                   console.log("🎯 Looking for my comment...")
                   console.log("🎯 Current Player ID:", currentPlayerId)
                   console.log("🎯 AI Rankings:", aiEvaluation.rankings)
-                  
+
                   const myRanking = aiEvaluation.rankings?.find(r => {
                     console.log(`🎯 Comparing ${r.playerId} === ${currentPlayerId}:`, r.playerId === currentPlayerId)
                     return r.playerId === currentPlayerId
                   })
-                  
+
                   const myPlayer = players.find(p => p.id === currentPlayerId)
-                  
+
                   console.log("🎯 My ranking found:", myRanking)
                   console.log("🎯 My player found:", myPlayer)
-                  
+
                   if (myRanking && myPlayer) {
                     // ✅ 정규화된 데이터에서 코멘트 가져오기
                     const myComment = (myRanking as any).comment || ""
                     const myScore = myRanking.score !== undefined ? myRanking.score : (scores[currentPlayerId] || 0)
-                    
+
                     console.log("🎯 My comment:", myComment)
                     console.log("🎯 My score:", myScore)
-                    
+
                     return (
                       <div className="mb-6">
                         <div className="flex items-center gap-2 mb-3">
@@ -434,7 +481,7 @@ export default function ResultScreen() {
                     return null
                   }
                 })()}
-                
+
                 {/* 다른 참가자들의 코멘트 */}
                 <div className="space-y-4">
                   <h3 className="font-semibold text-gray-700 flex items-center gap-2">
@@ -449,12 +496,12 @@ export default function ResultScreen() {
                       // ✅ 정규화된 데이터에서 코멘트 가져오기
                       const comment = (ranking as any).comment || ""
                       const score = ranking.score !== undefined ? ranking.score : (scores[ranking.playerId] || 0)
-                      
+
                       if (!player) {
                         console.warn(`⚠️ No player found for ranking ${ranking.rank}`)
                         return null
                       }
-                      
+
                       return (
                         <div
                           key={`others-${ranking.playerId}`}
@@ -549,13 +596,22 @@ export default function ResultScreen() {
           {/* 🎨 참가자 그림 갤러리 */}
           {Object.keys(drawings).length > 0 && (
             <Card className="bg-white/95 backdrop-blur-sm">
-              <CardHeader>
+              <CardHeader className="relative">
                 <CardTitle className="flex items-center gap-2">
                   <ImageIcon className="h-5 w-5 text-purple-500" />
                   참가자 작품 갤러리
                 </CardTitle>
                 <p className="text-sm text-gray-600">참가자들의 작품을 감상해보세요</p>
-              </CardHeader>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="absolute top-4 right-4 text-purple-600 hover:text-purple-800 hover:bg-purple-100"
+                  onClick={() => setShowGalleryModal(true)}
+                >
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  내 작품 소장하기 ❤
+                </Button>
+  ️            </CardHeader>
               <CardContent>
                 <Carousel setApi={setCarouselApi} opts={{ loop: true }} className="w-full">
                   <CarouselContent>
@@ -573,7 +629,7 @@ export default function ResultScreen() {
                               (player as any).aiScore !== undefined
                                 ? (player as any).aiScore
                                 : scores[player.id] || 0
-                            
+
                             // 순위에 따른 테두리 스타일
                             const playerRank = sortedPlayers.findIndex(p => p.id === player.id) + 1
                             const borderClass = 
@@ -581,7 +637,7 @@ export default function ResultScreen() {
                               playerRank === 2 ? "border-4 border-gray-400 shadow-lg shadow-gray-400/50" :
                               playerRank === 3 ? "border-4 border-orange-400 shadow-lg shadow-orange-400/50" :
                               "border-2 border-gray-200"
-                            
+
                             return (
                               <div key={player.id} className="flex flex-col items-center">
                                 {/* 그림 */}
@@ -640,6 +696,116 @@ export default function ResultScreen() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 갤러리 모달 - 내 그림만 표시 */}
+      <Dialog open={showGalleryModal} onOpenChange={setShowGalleryModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5 text-purple-500" />
+              내 그림
+            </DialogTitle>
+            <DialogDescription>
+              내가 그린 그림과 AI의 평가를 확인해보세요
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-4">
+            {(() => {
+              // 현재 사용자의 그림과 정보 찾기
+              const myPlayer = players.find(p => p.id === currentPlayerId);
+              if (!myPlayer) return <div className="text-center py-8">그림 정보를 찾을 수 없습니다.</div>;
+
+              const imgBase = drawings[currentPlayerId];
+              const imgSrc = !imgBase
+                ? "/placeholder.jpg"
+                : imgBase.startsWith("data:")
+                ? imgBase // 이미 data URL 형태
+                : `data:image/png;base64,${imgBase}`;
+
+              // AI 평가 정보 찾기
+              const myRanking = aiEvaluation?.rankings?.find(r => r.playerId === currentPlayerId);
+              const myComment = myRanking ? (myRanking as any).comment || "" : "";
+              const myScore = myRanking ? myRanking.score : (scores[currentPlayerId] || 0);
+
+              // 순위에 따른 테두리 스타일
+              const playerRank = sortedPlayers.findIndex(p => p.id === currentPlayerId) + 1;
+              const borderClass = 
+                playerRank === 1 ? "border-4 border-yellow-400 shadow-lg shadow-yellow-400/50" :
+                playerRank === 2 ? "border-4 border-gray-400 shadow-lg shadow-gray-400/50" :
+                playerRank === 3 ? "border-4 border-orange-400 shadow-lg shadow-orange-400/50" :
+                "border-2 border-gray-200";
+
+              return (
+                <div className="flex flex-col items-center">
+                  {/* 이미지와 코멘트를 포함하는 컨테이너 */}
+                  <div ref={imageContainerRef} className="flex flex-col items-center bg-white p-6 rounded-lg">
+                    {/* 그림 */}
+                    <div className="w-full max-w-md mx-auto">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imgSrc}
+                        alt={`${myPlayer.nickname} 그림`}
+                        className={`w-full aspect-square object-contain rounded-lg bg-gray-100 ${borderClass}`}
+                      />
+                    </div>
+
+                    {/* 사용자 정보 */}
+                    <div className="mt-4 text-center w-full">
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        {playerRank <= 3 && (
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                            playerRank === 1 ? "bg-yellow-500" :
+                            playerRank === 2 ? "bg-gray-500" :
+                            "bg-orange-500"
+                          }`}>
+                            {playerRank}
+                          </div>
+                        )}
+                        <div className="font-medium text-gray-800">
+                          {myPlayer.nickname}
+                        </div>
+                        <Badge variant="outline" className="text-sm">
+                          {playerRank}등
+                        </Badge>
+                        <Badge variant="default" className="text-sm bg-purple-600">
+                          {myScore}점
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* AI 코멘트 */}
+                    {myComment && (
+                      <div className="mt-6 w-full max-w-md mx-auto">
+                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Bot className="h-5 w-5 text-purple-600" />
+                            <h3 className="font-medium text-purple-800">AI 평가 코멘트</h3>
+                          </div>
+                          <p className="text-gray-700 leading-relaxed">
+                            {myComment}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 로컬에 저장하기 버튼 */}
+                  <div className="mt-6 w-full max-w-md mx-auto">
+                    <Button 
+                      onClick={handleSaveImage} 
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      로컬에 저장하기
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }
