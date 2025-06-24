@@ -16,6 +16,8 @@ type EvaluationResult = {
     playerId: string;
     comment: string;
   }>;
+  summary?: string;
+  evaluationCriteria?: string;
 }
 
 const keywords = [
@@ -87,6 +89,14 @@ export class GameManager {
     stmt.run(playerId, roomId, nickname, false)
 
     console.log(`Player ${playerId} (${nickname}) successfully joined room ${roomId}`)
+
+    // 🔥 플레이어 목록 업데이트 이벤트 추가
+    const players = this.getRoomPlayers(roomId);
+    this.addGameEvent(roomId, "player_joined", {
+      message: `${nickname}님이 입장했습니다.`,
+      players,
+    });
+
     return true
   }
 
@@ -98,6 +108,13 @@ export class GameManager {
     `)
     stmt.run(hostId, roomId, nickname, true)
     console.log(`Host successfully added to room: ${roomId}`)
+
+    // 🔥 플레이어 목록 업데이트 이벤트 추가
+    const players = this.getRoomPlayers(roomId);
+    this.addGameEvent(roomId, "player_joined", {
+      message: `${nickname}님이 방을 생성했습니다.`,
+      players,
+    });
   }
 
   static getRoom(roomId: string): Room | null {
@@ -352,7 +369,7 @@ export class GameManager {
 
       console.log(`🤖 AI 평가 설정 (${modelType}): ${useAI ? '활성화' : '비활성화 (기본 결과 사용)'}`)
 
-      let evaluationResult: EvaluationResult
+      let evaluationResult: EvaluationResult = { rankings: [], comments: [] }
 
       if (useAI) {
         try {
@@ -361,7 +378,7 @@ export class GameManager {
           const aiEvaluator = await import('./ai-evaluator')
 
           evaluationResult = await aiEvaluator.evaluateDrawingsWithRetry(
-            validSubmissions, 
+            submissions,
             room.current_keyword || '그림',
             modelType as "gemini" | "chatgpt" | "claude"
           )
@@ -837,5 +854,31 @@ export class GameManager {
       }
       throw error
     }
+  }
+
+  static getEvents(
+      roomId: string,
+      lastEventId: number
+  ): { id: number; event_type: string; event_data: string }[] {
+    const stmt = db.prepare(
+        "SELECT * FROM game_events WHERE room_id = ? AND id > ?"
+    );
+    const events = stmt.all(roomId, lastEventId) as any[];
+
+    // 이벤트 데이터에 추가 정보 포함 (디버깅용)
+    events.forEach((event) => {
+      const parsedData = JSON.parse(event.event_data || "{}");
+      if (parsedData) {
+        // 이 부분은 디버깅용이므로 타입 에러를 무시합니다.
+        // @ts-ignore
+        event.event_type = parsedData.type;
+        // @ts-ignore
+        event.data_length = event.event_data.length;
+        // @ts-ignore
+        event.created_at = event.created_at;
+      }
+    });
+
+    return events;
   }
 }
