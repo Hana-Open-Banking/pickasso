@@ -7,7 +7,7 @@ import { Toaster } from "@/components/ui/toaster"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "그림 맞히기 게임",
+  title: "pickasso",
   description: "친구들과 함께 그림을 그리고 AI가 채점하는 게임",
 }
 

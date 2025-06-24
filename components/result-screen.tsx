@@ -24,14 +24,13 @@ export default function ResultScreen() {
   const scores = useGameStore((state) => state.scores)
   const winner = useGameStore((state) => state.winner)
   const isHost = useGameStore((state) => state.isHost)
-  const playerId = useGameStore((state) => state.playerId)
+  const currentPlayerId = useGameStore((state) => state.playerId) // ✅ 변수명 변경
   const nickname = useGameStore((state) => state.nickname)
   const aiEvaluation = useGameStore((state) => state.aiEvaluation)
   const nextRound = useGameStore((state) => state.nextRound)
   const resetGame = useGameStore((state) => state.resetGame)
   const leaveRoom = useGameStore((state) => state.leaveRoom)
   const currentPhase = useGameStore((state) => state.currentPhase)
-  const setAiEvaluation = useGameStore((state) => state.setAiEvaluation)
   
   const [showLeaveAlert, setShowLeaveAlert] = useState(false)
   const [forceUpdate, setForceUpdate] = useState(0)
@@ -47,69 +46,22 @@ export default function ResultScreen() {
 
   // 🔍 디버깅: 컴포넌트 렌더링 시 상태 확인
   console.log("🎨 ResultScreen render:")
+  console.log("🎨 Current Player ID:", currentPlayerId)
   console.log("🎨 Players:", players)
   console.log("🎨 Scores:", scores)
   console.log("🎨 Winner:", winner)
   console.log("🎨 AI Evaluation:", aiEvaluation)
-  console.log("🎨 AI Rankings:", aiEvaluation?.rankings)
-  console.log("🎨 AI Comments:", aiEvaluation?.comments)
-  console.log("🎨 Current player ID:", playerId)
-
-  // 🔍 디버깅: 결과 화면이 표시되지 않는 경우 체크
+  
   useEffect(() => {
-    console.log("🎨 ResultScreen mounted/updated")
-    console.log("🎨 Players count:", players.length)
-    console.log("🎨 Scores keys:", Object.keys(scores))
-    console.log("🎨 Winner:", winner)
-    console.log("🎨 AI Evaluation present:", !!aiEvaluation)
-    
-    // 디버깅: 스토어 상태 직접 확인
-    console.log("🔍 Direct store check - Scores:", scores)
-    console.log("🔍 Direct store check - Winner:", winner)
-    console.log("🔍 Direct store check - AI Evaluation:", aiEvaluation)
-    console.log("🔍 Direct store check - Phase:", currentPhase)
-    
-    // 🚨 임시 해결책: AI 평가 데이터가 없을 때 테스트 데이터 설정
-    if (!aiEvaluation && Object.keys(scores).length > 0) {
-      console.log("⚠️ AI 평가 데이터가 없어서 테스트 데이터를 생성합니다...")
-      setTimeout(() => {
-        const testAiEvaluation = {
-          rankings: Object.entries(scores)
-            .sort(([,a], [,b]) => (b as number) - (a as number))
-            .map(([playerId, score], index) => ({
-              rank: index + 1,
-              playerId,
-              score: score as number
-            })),
-          comments: Object.keys(scores).map(playerId => {
-            const player = players.find(p => p.id === playerId);
-            return {
-              playerId,
-              comment: `${player?.nickname || 'Player'}님의 "꽃" 작품이 정말 인상적이었어요! 창의적이고 아름다운 표현이었습니다. 🌸✨`
-            };
-          }),
-          summary: `이번 라운드는 "꽃"을 주제로 ${players.length}명이 참여했습니다. 모든 작품에서 각자의 창의성과 개성이 잘 드러났으며, 주제를 나름대로 해석한 다양한 접근 방식이 인상적이었습니다! 🌟`,
-          evaluationCriteria: "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. (임시 테스트 데이터)"
-        };
-        
-        console.log("🔧 테스트 AI 평가 데이터 설정:", testAiEvaluation);
-        setAiEvaluation(testAiEvaluation);
-      }, 1000);
-    }
-  }, [players, scores, winner, aiEvaluation, currentPhase, setAiEvaluation])
-
-  // 실시간 store 상태 감시
-  useEffect(() => {
-    const unsubscribe = useGameStore.subscribe((state) => {
-      console.log("🎯 Store state changed:", {
-        scores: state.scores,
-        winner: state.winner,
-        aiEvaluation: state.aiEvaluation,
-        currentPhase: state.currentPhase
-      })
+    console.log("🔄 ResultScreen mounted/updated")
+    console.log("🔄 Current game state:", {
+      currentPlayerId,
+      players: players.length,
+      scores: Object.keys(scores).length,
+      winner: winner,
+      aiEvaluation: aiEvaluation ? "present" : "null",
+      currentPhase: currentPhase
     })
-
-    return unsubscribe
   }, [])
 
   const getSortedPlayers = () => {
@@ -117,22 +69,59 @@ export default function ResultScreen() {
     console.log("🔍 AI Evaluation exists:", !!aiEvaluation)
     console.log("🔍 AI Rankings exists:", !!aiEvaluation?.rankings)
     console.log("🔍 AI Rankings length:", aiEvaluation?.rankings?.length || 0)
+    console.log("🔍 Players length:", players.length)
+    console.log("🔍 All players:", players)
     
     if (aiEvaluation && aiEvaluation.rankings && aiEvaluation.rankings.length > 0) {
       console.log("🔍 Using AI rankings for sorting")
-      const sortedRankings = aiEvaluation.rankings.sort((a, b) => a.rank - b.rank)
+      // ✅ 원본 배열을 수정하지 않도록 복사본 생성
+      const sortedRankings = [...aiEvaluation.rankings].sort((a, b) => a.rank - b.rank)
       console.log("🔍 Sorted AI rankings:", sortedRankings)
       
-      const mappedPlayers = sortedRankings
-        .map(ranking => {
-          const player = players.find(p => p.id === ranking.playerId)
-          console.log(`🔍 Mapping player ${ranking.playerId}:`, player)
-          return player ? { ...player, aiRank: ranking.rank, aiScore: ranking.score } : null
-        })
-        .filter(Boolean)
+      // ✅ AI rankings 기반으로 정렬된 플레이어 배열 생성
+      const sortedPlayers = sortedRankings.map(ranking => {
+        const player = players.find(p => p.id === ranking.playerId)
+        if (player) {
+          // 정규화된 데이터에서 score와 comment 사용
+          const rankScore = ranking.score !== undefined ? ranking.score : (scores[ranking.playerId] || 0)
+          return { 
+            ...player, 
+            aiRank: ranking.rank, 
+            aiScore: rankScore,
+            aiComment: ranking.comment || ""
+          }
+        } else {
+          console.warn(`⚠️ Player not found for ranking:`, ranking)
+          // 플레이어를 찾을 수 없는 경우 기본 객체 반환
+          return {
+            id: ranking.playerId,
+            nickname: `Player ${ranking.playerId}`,
+            aiRank: ranking.rank,
+            aiScore: ranking.score || 0,
+            aiComment: ranking.comment || ""
+          }
+        }
+      }).filter(player => player !== null)
       
-      console.log("🔍 Final mapped players:", mappedPlayers)
-      return mappedPlayers
+      console.log("🔍 Sorted players by AI ranking:", sortedPlayers)
+      
+      // ✅ AI rankings에 없는 플레이어들 추가 (혹시 누락된 경우 대비)
+      const rankedPlayerIds = new Set(sortedRankings.map(r => r.playerId))
+      const unrankedPlayers = players.filter(p => !rankedPlayerIds.has(p.id))
+      
+      if (unrankedPlayers.length > 0) {
+        console.log("🔍 Found unranked players:", unrankedPlayers)
+        unrankedPlayers.forEach(player => {
+          sortedPlayers.push({
+            ...player,
+            aiRank: sortedPlayers.length + 1,
+            aiScore: scores[player.id] || 0,
+            aiComment: ""
+          })
+        })
+      }
+      
+      return sortedPlayers
     } else {
       console.log("🔍 Using default scores for sorting")
       const sortedByScore = [...players].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0))
@@ -144,80 +133,42 @@ export default function ResultScreen() {
   const sortedPlayers = getSortedPlayers()
 
   // 🔍 디버깅: 데이터 상태 확인
-  console.log("🎨 Sorted players:", sortedPlayers)
-  console.log("🎨 Sorted players count:", sortedPlayers.length)
-
-  // 안전장치: 플레이어 데이터가 없는 경우
-  if (!players || players.length === 0) {
-    console.log("⚠️  No players data, showing loading state")
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 p-4 flex items-center justify-center">
-        <Card className="max-w-md mx-auto">
-          <CardContent className="p-8 text-center">
-            <div className="animate-spin w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
-            <h2 className="text-xl font-bold text-white mb-2">결과 로딩 중...</h2>
-            <p className="text-white/80">
-              게임 결과를 불러오고 있습니다.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // 🔥 임시 디버깅: 점수가 비어있을 때 직접 zustand store에서 확인
-  const currentStoreState = useGameStore.getState()
-  console.log("🔥 Current store state inspection:", {
-    scores: currentStoreState.scores,
-    winner: currentStoreState.winner,
-    aiEvaluation: currentStoreState.aiEvaluation,
-    currentPhase: currentStoreState.currentPhase
-  })
+  console.log("🔍 Final sorted players:", sortedPlayers)
 
   const getRankIcon = (index: number) => {
     switch (index) {
       case 0:
         return <Trophy className="h-6 w-6 text-yellow-500" />
       case 1:
-        return <Medal className="h-6 w-6 text-gray-400" />
+        return <Medal className="h-6 w-6 text-gray-500" />
       case 2:
-        return <Award className="h-6 w-6 text-amber-600" />
+        return <Award className="h-6 w-6 text-orange-500" />
       default:
-        return <span className="w-6 h-6 flex items-center justify-center text-gray-500 font-bold">{index + 1}</span>
+        return <span className="text-lg font-bold text-gray-500">{index + 1}</span>
     }
   }
 
   const getRankColor = (index: number, playerId: string) => {
-    if (playerId.startsWith("bot")) {
-      switch (index) {
-        case 0:
-          return "bg-gradient-to-r from-blue-400 to-blue-600"
-        case 1:
-          return "bg-gradient-to-r from-purple-400 to-purple-600"
-        case 2:
-          return "bg-gradient-to-r from-indigo-400 to-indigo-600"
-        default:
-          return "bg-gradient-to-r from-gray-400 to-gray-600"
-      }
-    }
-
+    if (playerId === currentPlayerId) return "bg-blue-500" // ✅ 수정됨
     switch (index) {
       case 0:
-        return "bg-gradient-to-r from-yellow-400 to-yellow-600"
+        return "bg-gradient-to-r from-yellow-400 to-amber-500"
       case 1:
-        return "bg-gradient-to-r from-gray-300 to-gray-500"
+        return "bg-gradient-to-r from-gray-400 to-slate-500"
       case 2:
-        return "bg-gradient-to-r from-amber-400 to-amber-600"
+        return "bg-gradient-to-r from-orange-400 to-amber-500"
       default:
-        return "bg-gradient-to-r from-blue-400 to-blue-600"
+        return "bg-gradient-to-r from-blue-400 to-purple-500"
     }
   }
 
   const handleNextRound = async () => {
+    console.log("🔄 다음 라운드 시작 중...")
     await nextRound()
   }
 
   const handleGoHome = async () => {
+    console.log("🏠 방 나가기 중...")
     await leaveRoom()
     router.push("/")
   }
@@ -298,12 +249,13 @@ export default function ResultScreen() {
               <div className="space-y-4">
                 {sortedPlayers.map((player, index) => {
                   const aiRanking = aiEvaluation?.rankings?.find(r => r.playerId === player.id)
-                  const displayScore = aiRanking ? aiRanking.score : (scores[player.id] || 0)
+                  const displayScore = player.aiScore !== undefined ? player.aiScore : (aiRanking ? aiRanking.score : (scores[player.id] || 0))
                   
                   console.log(`🎨 Rendering player ${index}:`, {
                     player: player.nickname,
                     playerId: player.id,
                     aiRanking,
+                    aiScore: player.aiScore,
                     scoreFromStore: scores[player.id],
                     displayScore
                   })
@@ -312,7 +264,7 @@ export default function ResultScreen() {
                     <div
                       key={player.id}
                       className={`flex items-center justify-between p-4 rounded-lg transition-all ${
-                        player.id === playerId
+                        player.id === currentPlayerId
                           ? "bg-blue-50 border-2 border-blue-200 shadow-md"
                           : index === 0
                           ? "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200"
@@ -332,7 +284,7 @@ export default function ResultScreen() {
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{player.nickname}</span>
-                              {player.id === playerId && (
+                              {player.id === currentPlayerId && (
                                 <span className="text-sm text-blue-600 font-medium">(나)</span>
                               )}
                               {player.is_host && (
@@ -371,7 +323,7 @@ export default function ResultScreen() {
             </CardContent>
           </Card>
 
-          {aiEvaluation && aiEvaluation.comments && aiEvaluation.comments.length > 0 && (
+          {aiEvaluation && aiEvaluation.rankings && aiEvaluation.rankings.length > 0 && (
             <Card className="bg-white/95 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -383,22 +335,108 @@ export default function ResultScreen() {
                 </p>
               </CardHeader>
               <CardContent>
+                {/* 내 코멘트를 먼저 표시 */}
+                {(() => {
+                  console.log("🎯 Looking for my comment...")
+                  console.log("🎯 Current Player ID:", currentPlayerId)
+                  console.log("🎯 AI Rankings:", aiEvaluation.rankings)
+                  
+                  const myRanking = aiEvaluation.rankings?.find(r => {
+                    console.log(`🎯 Comparing ${r.playerId} === ${currentPlayerId}:`, r.playerId === currentPlayerId)
+                    return r.playerId === currentPlayerId
+                  })
+                  
+                  const myPlayer = players.find(p => p.id === currentPlayerId)
+                  
+                  console.log("🎯 My ranking found:", myRanking)
+                  console.log("🎯 My player found:", myPlayer)
+                  
+                  if (myRanking && myPlayer) {
+                    // ✅ 정규화된 데이터에서 코멘트 가져오기
+                    const myComment = myRanking.comment || ""
+                    const myScore = myRanking.score !== undefined ? myRanking.score : (scores[currentPlayerId] || 0)
+                    
+                    console.log("🎯 My comment:", myComment)
+                    console.log("🎯 My score:", myScore)
+                    
+                    return (
+                      <div className="mb-6">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">나</span>
+                          </div>
+                          <h3 className="font-semibold text-blue-700">내 작품 평가</h3>
+                        </div>
+                        <div className="p-4 rounded-lg border-l-4 border-l-blue-500 bg-blue-50 shadow-sm">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm bg-blue-500">
+                                {myPlayer.nickname[0].toUpperCase()}
+                              </div>
+                              <div className="text-center mt-1">
+                                {myRanking.rank === 1 ? (
+                                  <Trophy className="h-4 w-4 text-yellow-500 mx-auto" />
+                                ) : myRanking.rank === 2 ? (
+                                  <Medal className="h-4 w-4 text-gray-500 mx-auto" />
+                                ) : myRanking.rank === 3 ? (
+                                  <Award className="h-4 w-4 text-orange-500 mx-auto" />
+                                ) : (
+                                  <span className="text-xs text-gray-500 font-bold">{myRanking.rank}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="font-medium">{myPlayer.nickname}</span>
+                                <span className="text-sm text-blue-600 font-medium">(나)</span>
+                                <Badge variant="outline" className="text-sm">
+                                  {myRanking.rank}등
+                                </Badge>
+                                <Badge variant="default" className="text-sm bg-blue-600">
+                                  {myScore}점
+                                </Badge>
+                              </div>
+                              <div className="bg-white/80 rounded-lg p-3 border">
+                                <p className="text-gray-700 leading-relaxed font-medium">
+                                  {myComment || "AI 평가를 불러오는 중입니다..."}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  } else {
+                    console.log("🎯 My comment section not rendered - data missing")
+                    return null
+                  }
+                })()}
+                
+                {/* 다른 참가자들의 코멘트 */}
                 <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                    <span>다른 참가자들의 평가</span>
+                    <span className="text-sm text-gray-500">({aiEvaluation.rankings?.filter(r => r.playerId !== currentPlayerId).length || 0}명)</span>
+                  </h3>
                   {aiEvaluation.rankings
+                    ?.filter(ranking => ranking.playerId !== currentPlayerId) // 내 코멘트 제외
                     ?.sort((a, b) => a.rank - b.rank)
-                    .map((ranking) => {
+                    .map((ranking, index) => {
                       const player = players.find(p => p.id === ranking.playerId)
-                      const comment = aiEvaluation.comments?.find(c => c.playerId === ranking.playerId)
+                      // ✅ 정규화된 데이터에서 코멘트 가져오기
+                      const comment = ranking.comment || ""
+                      const score = ranking.score !== undefined ? ranking.score : (scores[ranking.playerId] || 0)
                       
-                      if (!player || !comment) return null
+                      if (!player) {
+                        console.warn(`⚠️ No player found for ranking ${ranking.rank}`)
+                        return null
+                      }
                       
                       return (
                         <div
-                          key={ranking.playerId}
+                          key={`others-${ranking.playerId}`}
                           className={`p-4 rounded-lg border-l-4 transition-all ${
-                            ranking.playerId === playerId
-                              ? "bg-blue-50 border-l-blue-500 shadow-md"
-                              : ranking.rank === 1
+                            ranking.rank === 1
                               ? "bg-yellow-50 border-l-yellow-400"
                               : ranking.rank === 2
                               ? "bg-gray-50 border-l-gray-400"
@@ -409,7 +447,12 @@ export default function ResultScreen() {
                         >
                           <div className="flex items-start gap-3">
                             <div className="flex-shrink-0">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${getRankColor(ranking.rank - 1, player.id)}`}>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                                ranking.rank === 1 ? "bg-gradient-to-r from-yellow-400 to-amber-500" :
+                                ranking.rank === 2 ? "bg-gradient-to-r from-gray-400 to-slate-500" :
+                                ranking.rank === 3 ? "bg-gradient-to-r from-orange-400 to-amber-500" :
+                                "bg-gradient-to-r from-blue-400 to-purple-500"
+                              }`}>
                                 {player.nickname[0].toUpperCase()}
                               </div>
                               <div className="text-center mt-1">
@@ -427,19 +470,16 @@ export default function ResultScreen() {
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="font-medium">{player.nickname}</span>
-                                {ranking.playerId === playerId && (
-                                  <span className="text-sm text-blue-600 font-medium">(나)</span>
-                                )}
                                 <Badge variant="outline" className="text-sm">
                                   {ranking.rank}등
                                 </Badge>
                                 <Badge variant="default" className="text-sm bg-purple-600">
-                                  {ranking.score}점
+                                  {score}점
                                 </Badge>
                               </div>
                               <div className="bg-white/60 rounded-lg p-3 border">
                                 <p className="text-gray-700 leading-relaxed">
-                                  {comment.comment}
+                                  {comment || "AI 평가 코멘트를 불러오는 중입니다..."}
                                 </p>
                               </div>
                             </div>

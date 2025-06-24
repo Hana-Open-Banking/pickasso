@@ -245,7 +245,7 @@ export class GameManager {
       round_number: d.round_number,
       canvas_data_length: d.canvas_data?.length || 0,
       keyword: d.keyword,
-      created_at: d.created_at
+      created_at: (d as any).created_at
     })))
 
     const drawings = db
@@ -282,7 +282,11 @@ export class GameManager {
       // 유효한 그림 데이터가 있는지 확인
       const validSubmissions = submissions.filter(s => s.imageData && s.imageData.length > 100) // 최소 100자 이상
       console.log(`✅ 유효한 그림 데이터: ${validSubmissions.length}/${submissions.length}개`)
-
+      console.log(`📊 모든 제출물 상세:`, submissions.map(s => ({
+        playerId: s.playerId,
+        imageDataLength: s.imageData?.length || 0,
+        isValid: s.imageData && s.imageData.length > 100
+      })))
       if (validSubmissions.length === 0) {
         console.log('⚠️  유효한 그림 데이터가 없습니다. 기본 결과 생성...')
         const fallbackResult = {
@@ -355,6 +359,7 @@ export class GameManager {
           const modelType = room.model_type || 'gemini'
           console.log(`🚀 ${modelType.toUpperCase()} AI 평가 시작...`)
           const aiEvaluator = await import('./ai-evaluator')
+
           evaluationResult = await aiEvaluator.evaluateDrawingsWithRetry(
             validSubmissions, 
             room.current_keyword || '그림',
@@ -375,18 +380,18 @@ export class GameManager {
 
       if (!useAI) {
         console.log(`🎯 기본 결과 생성 중...`)
-        // 기본 결과 생성
+        // 기본 결과 생성 - 실제 submissions 사용
         evaluationResult = {
-          rankings: validSubmissions.map((s, index) => ({
+          rankings: submissions.map((s, index) => ({
             rank: index + 1,
             playerId: s.playerId,
             score: Math.floor(Math.random() * 20) + 80 // 80-99점 랜덤
           })),
-          comments: validSubmissions.map(s => ({
+          comments: submissions.map(s => ({
             playerId: s.playerId,
             comment: `"${room.current_keyword || '그림'}"을 주제로 한 멋진 작품이었어요! 창의적인 아이디어가 돋보입니다. 🎨✨`
           })),
-          summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 ${validSubmissions.length}명이 참여했습니다. 모든 작품에서 각자의 창의성과 개성이 잘 드러났으며, 주제를 나름대로 해석한 다양한 접근 방식이 인상적이었습니다! 🌟`,
+          summary: `이번 라운드는 "${room.current_keyword || '그림'}"을 주제로 ${submissions.length}명이 참여했습니다. 모든 작품에서 각자의 창의성과 개성이 잘 드러났으며, 주제를 나름대로 해석한 다양한 접근 방식이 인상적이었습니다! 🌟`,
           evaluationCriteria: "주제 연관성 50%, 창의성 30%, 완성도 20% 기준으로 평가했습니다. AI 평가가 제한되어 기본 평가를 적용했지만, 모든 작품의 노력을 인정합니다."
         }
 
@@ -398,7 +403,8 @@ export class GameManager {
 
         console.log(`✅ 기본 결과 생성 완료:`, {
           rankingsCount: evaluationResult.rankings.length,
-          scoreRange: `${Math.min(...evaluationResult.rankings.map(r => r.score))}~${Math.max(...evaluationResult.rankings.map(r => r.score))}점`
+          scoreRange: `${Math.min(...evaluationResult.rankings.map(r => r.score))}~${Math.max(...evaluationResult.rankings.map(r => r.score))}점`,
+          playerIds: evaluationResult.rankings.map(r => r.playerId)
         })
       }
 
