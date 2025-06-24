@@ -70,7 +70,7 @@ export default function ResultScreen() {
       aiEvaluation: aiEvaluation ? "present" : "null",
       currentPhase: currentPhase
     })
-  }, [])
+  }, [currentPlayerId, players.length, scores, winner, aiEvaluation, currentPhase])
 
   // 그림 데이터 불러오기
   useEffect(() => {
