@@ -244,7 +244,7 @@ export default function GameScreen() {
                 <Button
                   onClick={handleSubmit}
                   disabled={!canvasData || isSubmitted}
-                  className="bg-green-500 hover:bg-green-600 text-white"
+                  className="w-full bg-green-500 hover:bg-green-600 text-white"
                 >
                   <Send className="h-4 w-4 mr-1" />
                   {isSubmitted ? "제출완료" : "제출하기"}

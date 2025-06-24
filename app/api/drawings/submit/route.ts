@@ -102,16 +102,33 @@ async function processAIEvaluationAsync(roomId: string) {
     console.log("📈 최종 점수:", scores);
     console.log("🏆 우승자:", winner);
     
-    // ✅ 핵심: 모든 클라이언트에게 동시에 결과 전달
-    console.log("📡 게임 이벤트 추가 시작...");
-    GameManager.addGameEvent(roomId, "round_completed", { 
-      scores, 
-      winner,
-      aiEvaluation: evaluationResult,
-      completedAt: new Date().toISOString()
-    });
-    
-    console.log("📡 결과 이벤트 발송 완료 - 모든 클라이언트가 동시에 수신");
+    // 🖼️ 그림 데이터도 이벤트에 포함하여 서버리스 환경에서도 결과 페이지에서 접근 가능
+    try {
+      const drawings = require("@/lib/db").default.prepare(
+        "SELECT * FROM drawings WHERE room_id = ? AND round_number = ?"
+      ).all(roomId, require("@/lib/game-manager").GameManager.getRoom(roomId).round_number) as any[]
+
+      const drawingMap: Record<string, string> = {}
+      drawings.forEach(d => {
+        drawingMap[d.player_id] = d.canvas_data
+      })
+
+      GameManager.addGameEvent(roomId, "round_completed", { 
+        scores, 
+        winner,
+        aiEvaluation: evaluationResult,
+        drawings: drawingMap,
+        completedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error attaching drawings to event:", err)
+      GameManager.addGameEvent(roomId, "round_completed", { 
+        scores, 
+        winner,
+        aiEvaluation: evaluationResult,
+        completedAt: new Date().toISOString()
+      });
+    }
     
     // 검증: 이벤트가 실제로 저장되었는지 확인
     setTimeout(() => {

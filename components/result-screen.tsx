@@ -3,7 +3,8 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Trophy, Medal, Award, RotateCcw, Home, Crown, Sparkles, Bot } from "lucide-react"
+import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext, type CarouselApi } from "@/components/ui/carousel"
+import { Trophy, Medal, Award, RotateCcw, Home, Crown, Sparkles, Bot, Image as ImageIcon } from "lucide-react"
 import { useGameStore } from "@/store/game-store"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
@@ -27,6 +28,7 @@ export default function ResultScreen() {
   const currentPlayerId = useGameStore((state) => state.playerId) // ✅ 변수명 변경
   const nickname = useGameStore((state) => state.nickname)
   const aiEvaluation = useGameStore((state) => state.aiEvaluation)
+  const roomId = useGameStore((state) => state.roomId)
   const nextRound = useGameStore((state) => state.nextRound)
   const resetGame = useGameStore((state) => state.resetGame)
   const leaveRoom = useGameStore((state) => state.leaveRoom)
@@ -34,6 +36,8 @@ export default function ResultScreen() {
   
   const [showLeaveAlert, setShowLeaveAlert] = useState(false)
   const [forceUpdate, setForceUpdate] = useState(0)
+  const [drawings, setDrawings] = useState<Record<string, string>>({})
+  const [carouselApi, setCarouselApi] = useState<CarouselApi | null>(null)
   const router = useRouter()
 
   // 🔥 디버깅용: 강제 리렌더링 함수
@@ -64,6 +68,46 @@ export default function ResultScreen() {
     })
   }, [])
 
+  // 그림 데이터 불러오기
+  useEffect(() => {
+    const fetchDrawings = async () => {
+      if (!roomId) return
+      try {
+        const res = await fetch(`/api/rooms/${roomId}/results`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data && data.drawings) {
+          setDrawings(data.drawings as Record<string, string>)
+        }
+      } catch (error) {
+        console.error("Error fetching drawings:", error)
+      }
+    }
+    fetchDrawings()
+  }, [roomId])
+
+  // 캐러셀 자동 슬라이드
+  useEffect(() => {
+    if (!carouselApi) return
+    const id = setInterval(() => {
+      if (carouselApi.canScrollNext()) {
+        carouselApi.scrollNext()
+      } else {
+        carouselApi.scrollTo(0)
+      }
+    }, 5000)
+    return () => clearInterval(id)
+  }, [carouselApi])
+
+  // 배열을 일정 크기로 분할
+  const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+    const res: T[][] = []
+    for (let i = 0; i < arr.length; i += size) {
+      res.push(arr.slice(i, i + size))
+    }
+    return res
+  }
+
   const getSortedPlayers = () => {
     console.log("🔍 getSortedPlayers called")
     console.log("🔍 AI Evaluation exists:", !!aiEvaluation)
@@ -88,17 +132,20 @@ export default function ResultScreen() {
             ...player, 
             aiRank: ranking.rank, 
             aiScore: rankScore,
-            aiComment: ranking.comment || ""
+            aiComment: (ranking as any).comment || ""
           }
         } else {
           console.warn(`⚠️ Player not found for ranking:`, ranking)
-          // 플레이어를 찾을 수 없는 경우 기본 객체 반환
+          // 플레이어를 찾을 수 없는 경우 기본 객체 반환 (필수 필드 기본값 포함)
           return {
             id: ranking.playerId,
             nickname: `Player ${ranking.playerId}`,
+            is_host: false,
+            has_submitted: true,
+            score: ranking.score || 0,
             aiRank: ranking.rank,
             aiScore: ranking.score || 0,
-            aiComment: ranking.comment || ""
+            aiComment: (ranking as any).comment || ""
           }
         }
       }).filter(player => player !== null)
@@ -249,13 +296,13 @@ export default function ResultScreen() {
               <div className="space-y-4">
                 {sortedPlayers.map((player, index) => {
                   const aiRanking = aiEvaluation?.rankings?.find(r => r.playerId === player.id)
-                  const displayScore = player.aiScore !== undefined ? player.aiScore : (aiRanking ? aiRanking.score : (scores[player.id] || 0))
+                  const displayScore = (player as any).aiScore !== undefined ? (player as any).aiScore : (aiRanking ? aiRanking.score : (scores[player.id] || 0))
                   
                   console.log(`🎨 Rendering player ${index}:`, {
                     player: player.nickname,
                     playerId: player.id,
                     aiRanking,
-                    aiScore: player.aiScore,
+                    aiScore: (player as any).aiScore,
                     scoreFromStore: scores[player.id],
                     displayScore
                   })
@@ -287,7 +334,7 @@ export default function ResultScreen() {
                               {player.id === currentPlayerId && (
                                 <span className="text-sm text-blue-600 font-medium">(나)</span>
                               )}
-                              {player.is_host && (
+                              {(player as any).is_host && (
                                 <Badge variant="default" className="bg-yellow-500 text-xs">
                                   <Crown className="h-2 w-2 mr-1" />
                                   방장
@@ -353,7 +400,7 @@ export default function ResultScreen() {
                   
                   if (myRanking && myPlayer) {
                     // ✅ 정규화된 데이터에서 코멘트 가져오기
-                    const myComment = myRanking.comment || ""
+                    const myComment = (myRanking as any).comment || ""
                     const myScore = myRanking.score !== undefined ? myRanking.score : (scores[currentPlayerId] || 0)
                     
                     console.log("🎯 My comment:", myComment)
@@ -424,7 +471,7 @@ export default function ResultScreen() {
                     .map((ranking, index) => {
                       const player = players.find(p => p.id === ranking.playerId)
                       // ✅ 정규화된 데이터에서 코멘트 가져오기
-                      const comment = ranking.comment || ""
+                      const comment = (ranking as any).comment || ""
                       const score = ranking.score !== undefined ? ranking.score : (scores[ranking.playerId] || 0)
                       
                       if (!player) {
@@ -495,7 +542,7 @@ export default function ResultScreen() {
                     <div className="flex items-start gap-3">
                       <Bot className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
-                        <h3 className="font-medium text-purple-900 mb-2">🎨 AI 심사위원의 종합 평가</h3>
+                        <h3 className="font-medium text-purple-900 mb-2">AI 심사위원의 종합 평가</h3>
                         <p className="text-gray-700 leading-relaxed">{aiEvaluation.summary}</p>
                       </div>
                     </div>
@@ -574,6 +621,63 @@ export default function ResultScreen() {
               방 나가기
             </Button>
           </div>
+
+          {/* 🎨 참가자 그림 갤러리 */}
+          {Object.keys(drawings).length > 0 && (
+            <Card className="bg-white/95 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5 text-purple-500" />
+                  참가자 작품 갤러리
+                </CardTitle>
+                <p className="text-sm text-gray-600">최대 3개 씩 작품을 감상해보세요</p>
+              </CardHeader>
+              <CardContent>
+                <Carousel setApi={setCarouselApi} opts={{ loop: true }} className="w-full">
+                  <CarouselContent>
+                    {chunkArray(sortedPlayers, 3).map((group, idx) => (
+                      <CarouselItem key={idx} className="px-2">
+                        <div className="flex justify-center gap-6 py-4">
+                          {group.map((player) => {
+                            const imgBase = drawings[player.id]
+                            const imgSrc = !imgBase
+                              ? "/placeholder.jpg"
+                              : imgBase.startsWith("data:")
+                              ? imgBase // 이미 data URL 형태
+                              : `data:image/png;base64,${imgBase}`
+                            const scoreValue =
+                              (player as any).aiScore !== undefined
+                                ? (player as any).aiScore
+                                : scores[player.id] || 0
+                            return (
+                              <div key={player.id} className="flex flex-col items-center w-48">
+                                {/* 그림 */}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={imgSrc}
+                                  alt={`${player.nickname} 그림`}
+                                  className="w-48 h-48 object-contain rounded-lg border shadow-md bg-gray-100"
+                                />
+                                {/* 캡션 */}
+                                <div className="mt-2 text-center">
+                                  <div className="font-medium text-gray-800 truncate">
+                                    {player.nickname}
+                                  </div>
+                                  <div className="text-sm text-gray-600">{scoreValue}점</div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="bg-white/80 backdrop-blur-sm" />
+                  <CarouselNext className="bg-white/80 backdrop-blur-sm" />
+                </Carousel>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

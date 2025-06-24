@@ -28,6 +28,8 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
 
     // AI 평가 결과 조회 (가장 최근 것)
     let aiEvaluation = null
+    // 참가자 그림 데이터 (playerId -> base64 이미지)
+    let drawingsData: Record<string, string> = {}
     try {
       console.log("🔍 Searching for AI evaluation in events...")
 
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
         FROM game_events 
         WHERE room_id = ? 
         ORDER BY created_at DESC
-      `).all(roomId) as GameEvent[]
+      `).all(roomId) as unknown as GameEvent[]
 
       console.log("📊 All events for room:", allEvents.map(e => ({
         id: e.id,
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
         WHERE room_id = ? AND event_type = 'round_completed' 
         ORDER BY created_at DESC 
         LIMIT 1
-      `).get(roomId) as GameEvent
+      `).get(roomId) as unknown as GameEvent
 
       console.log("🔍 AI result query:", {
         roomId,
@@ -73,9 +75,32 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
           rankingsCount: aiEvaluation?.rankings?.length || 0,
           commentsCount: aiEvaluation?.comments?.length || 0
         })
+
+        if (eventData.drawings) {
+          drawingsData = eventData.drawings
+        }
       } else {
         console.log("🤖 No round_completed event found")
         console.log("🔍 Available event types:", [...new Set(allEvents.map(e => e.event_type))])
+      }
+
+      // 🔍 최신 라운드 그림 데이터 조회 (갤러리용)
+      try {
+        const drawings = db.prepare(
+          "SELECT * FROM drawings WHERE room_id = ? AND round_number = ?"
+        ).all(roomId, room.round_number) as unknown as { player_id: string; canvas_data: string }[]
+
+        console.log("🖼️  Found drawings rows:", drawings.length)
+
+        drawings.forEach(d => {
+          if (d.canvas_data && d.canvas_data.length > 100) {
+            drawingsData[d.player_id] = d.canvas_data
+          }
+        })
+
+        console.log("🖼️  DrawingsData keys:", Object.keys(drawingsData))
+      } catch (error) {
+        console.error("Error fetching drawings for results:", error)
       }
     } catch (error: unknown) {
       console.error("Error parsing AI evaluation:", error)
@@ -86,7 +111,8 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
       players,
       scores,
       winner: winner || null,
-      aiEvaluation
+      aiEvaluation,
+      drawings: drawingsData
     }
 
     console.log("🎊 Returning results:", {
@@ -94,7 +120,8 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
       playerCount: players.length,
       hasScores: Object.keys(scores).length > 0,
       hasWinner: !!winner,
-      hasAiEvaluation: !!aiEvaluation
+      hasAiEvaluation: !!aiEvaluation,
+      drawingsCount: Object.keys(drawingsData).length
     })
 
     return Response.json(results)
