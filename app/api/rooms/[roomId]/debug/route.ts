@@ -13,12 +13,15 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
     const players = GameManager.getRoomPlayers(roomId)
 
     // 그림 데이터 확인
-    const drawings = db.prepare(`
+    const drawingsResult = db.prepare(`
       SELECT id, player_id, round_number, LENGTH(canvas_data) as canvas_length, keyword, score
       FROM drawings 
       WHERE room_id = ?
       ORDER BY submitted_at DESC
     `).all(roomId)
+
+    // Ensure drawings is an array of Drawing objects
+    const drawings = Array.isArray(drawingsResult) ? drawingsResult as any[] : []
 
     // 게임 이벤트 확인
     const events = db.prepare(`
@@ -56,14 +59,14 @@ export async function GET(request: NextRequest, { params }: { params: { roomId: 
         has_submitted: p.has_submitted,
         score: p.score
       })),
-      drawings: drawings.map(d => ({
+      drawings: drawings ? drawings.map(d => ({
         id: d.id,
         player_id: d.player_id,
         round_number: d.round_number,
         canvas_length: d.canvas_length,
         keyword: d.keyword,
         score: d.score
-      })),
+      })) : [],
       events: events.map((e) => ({
         id: e.id,
         event_type: e.event_type,

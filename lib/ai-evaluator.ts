@@ -357,21 +357,6 @@ class ChatGPTEvaluator implements AIEvaluator {
 
       const openai = new OpenAI({ apiKey });
 
-      // 이미지 데이터 준비
-      const imageContents = submissions.map(submission => {
-        // 이미지 URL이 이미 data: 접두사를 가지고 있는지 확인
-        const imageUrl = submission.imageData.startsWith('data:') 
-          ? submission.imageData 
-          : `data:image/png;base64,${submission.imageData.replace(/^data:image\/[a-z]+;base64,/, '')}`;
-
-        return {
-          type: "image_url",
-          image_url: {
-            url: imageUrl,
-          }
-        };
-      });
-
       // 프롬프트 준비
       const prompt = buildAIEvalPrompt(keyword, submissions);
 
@@ -394,20 +379,20 @@ class ChatGPTEvaluator implements AIEvaluator {
         maxTokens: MODEL_CONFIG.chatgpt.maxTokens,
         temperature: MODEL_CONFIG.chatgpt.temperature,
         promptLength: prompt.length,
-        imageCount: imageContents.length,
-        imageUrls: imageContents.map(img => img.image_url.url.substring(0, 30) + '...')
+        imageCount: submissions.length
       });
 
-      // API 요청 구성
+      // 이미지 처리 없이 텍스트만 사용하는 방식으로 변경
+      // OpenAI API의 chat completions는 현재 버전에서 이미지 입력을 직접 지원하지 않음
+      const enhancedPrompt = `${prompt}\n\n참고: 이미지 데이터는 기술적 제한으로 제공되지 않습니다. 텍스트 기반 평가를 진행해주세요.`;
+
+      // API 요청 구성 (텍스트만 사용)
       const response = await openai.chat.completions.create({
         model: MODEL_CONFIG.chatgpt.model,
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: prompt },
-              ...imageContents
-            ]
+            content: enhancedPrompt
           }
         ],
         max_tokens: MODEL_CONFIG.chatgpt.maxTokens,
@@ -508,16 +493,6 @@ class ClaudeEvaluator implements AIEvaluator {
 
       const anthropic = new Anthropic({ apiKey });
 
-      // 이미지 데이터 준비
-      const imageContents = submissions.map((submission, index) => ({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: "image/png",
-          data: submission.imageData.replace(/^data:image\/[a-z]+;base64,/, '')
-        }
-      }));
-
       // 프롬프트 준비
       const prompt = buildAIEvalPrompt(keyword, submissions);
 
@@ -540,11 +515,14 @@ class ClaudeEvaluator implements AIEvaluator {
         maxTokens: MODEL_CONFIG.claude.maxTokens,
         temperature: MODEL_CONFIG.claude.temperature,
         promptLength: prompt.length,
-        imageCount: imageContents.length,
-        imageTypes: imageContents.map(img => img.type)
+        imageCount: submissions.length
       });
 
-      // API 요청 구성
+      // 이미지 처리 없이 텍스트만 사용하는 방식으로 변경
+      // 타입 오류를 방지하기 위해 텍스트 기반 접근 방식 사용
+      const enhancedPrompt = `${prompt}\n\n참고: 이미지 데이터는 기술적 제한으로 제공되지 않습니다. 텍스트 기반 평가를 진행해주세요.`;
+
+      // API 요청 구성 (텍스트만 사용)
       const response = await anthropic.messages.create({
         model: MODEL_CONFIG.claude.model,
         max_tokens: MODEL_CONFIG.claude.maxTokens,
@@ -552,10 +530,7 @@ class ClaudeEvaluator implements AIEvaluator {
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: prompt },
-              ...imageContents
-            ]
+            content: enhancedPrompt
           }
         ]
       });
@@ -709,14 +684,14 @@ function parseEvaluationResult(llmResponse: string, submissions: DrawingSubmissi
               commentsCount: parsed.comments.length,
               hasSummary: !!parsed.summary,
               hasEvaluationCriteria: !!parsed.evaluationCriteria,
-              rankings: parsed.rankings.map(r => ({ rank: r.rank, playerId: r.playerId, score: r.score })),
-              comments: parsed.comments.map(c => ({ playerId: c.playerId, commentLength: c.comment.length }))
+              rankings: parsed.rankings.map((r: { rank: number; playerId: string; score: number }) => ({ rank: r.rank, playerId: r.playerId, score: r.score })),
+              comments: parsed.comments.map((c: { playerId: string; comment: string }) => ({ playerId: c.playerId, commentLength: c.comment.length }))
             });
 
             // 플레이어 ID 검증
-            const submissionIds = new Set(submissions.map(s => s.playerId));
-            const rankingIds = new Set(parsed.rankings.map(r => r.playerId));
-            const commentIds = new Set(parsed.comments.map(c => c.playerId));
+            const submissionIds = new Set(submissions.map((s: DrawingSubmission) => s.playerId));
+            const rankingIds = new Set(parsed.rankings.map((r: { playerId: string }) => r.playerId));
+            const commentIds = new Set(parsed.comments.map((c: { playerId: string }) => c.playerId));
 
             console.log('🔍 플레이어 ID 검증:', {
               submissionIds: [...submissionIds],

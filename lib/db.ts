@@ -15,9 +15,10 @@ export interface Player {
   room_id: string
   nickname: string
   is_host: boolean
-  has_submitted: boolean
+  has_submitted: boolean | number | string
   score: number
   joined_at: string
+  last_active?: string
 }
 
 export interface Drawing {
