@@ -226,30 +226,6 @@ export default function ResultScreen() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-4">🎨 게임 결과</h1>
           
-          {/* 🔥 디버깅용 버튼 - 개발 중에만 표시 */}
-          <div className="mb-4">
-            <Button 
-              onClick={triggerForceUpdate}
-              variant="outline"
-              size="sm"
-              className="bg-white/20 text-white border-white/30 hover:bg-white/30"
-            >
-              🔄 상태 새로고침 (디버그)
-            </Button>
-          </div>
-          
-          {aiEvaluation && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2 text-white mb-4 inline-flex items-center gap-2">
-              <Bot className="h-4 w-4" />
-              <span className="text-sm">AI 심사위원이 평가한 결과입니다</span>
-            </div>
-          )}
-          
-          {/* 🔥 현재 상태 요약 표시 */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2 text-white mb-4 text-sm">
-            <div>플레이어: {players.length}명 | 점수데이터: {Object.keys(scores).length}개 | AI평가: {aiEvaluation ? '있음' : '없음'}</div>
-            <div>Update #{forceUpdate}</div>
-          </div>
           <div className="flex items-center justify-center gap-2">
             <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2 text-white">
               <div className="flex items-center gap-2">
@@ -288,7 +264,7 @@ export default function ResultScreen() {
               </CardTitle>
               {aiEvaluation && (
                 <p className="text-sm text-gray-600">
-                  Gemini AI가 제시어 연관성, 창의성, 완성도를 종합 평가했습니다
+                  AI가 제시어 연관성, 창의성, 완성도를 종합 평가했습니다
                 </p>
               )}
             </CardHeader>
@@ -359,7 +335,7 @@ export default function ResultScreen() {
                         </Badge>
                         {aiEvaluation && (
                           <Badge variant="outline" className="text-sm">
-                            AI {index + 1}등
+                            {index + 1}등
                           </Badge>
                         )}
                       </div>
@@ -535,55 +511,6 @@ export default function ResultScreen() {
                       )
                     })}
                 </div>
-                
-                {/* AI 심사위원 종합 해설 */}
-                {aiEvaluation?.summary && (
-                  <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
-                    <div className="flex items-start gap-3">
-                      <Bot className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <h3 className="font-medium text-purple-900 mb-2">AI 심사위원의 종합 평가</h3>
-                        <p className="text-gray-700 leading-relaxed">{aiEvaluation.summary}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* 평가 기준 설명 */}
-                {aiEvaluation?.evaluationCriteria && (
-                  <div className="mt-4 p-4 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg border border-gray-200">
-                    <div className="flex items-start gap-3">
-                      <Trophy className="h-5 w-5 text-gray-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900 mb-2">📋 평가 기준</h3>
-                        <p className="text-gray-600 leading-relaxed text-sm">{aiEvaluation.evaluationCriteria}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
-                  <div className="flex items-start gap-3">
-                    <Sparkles className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-purple-800 mb-2">AI 평가 기준</h4>
-                      <div className="space-y-1 text-sm text-purple-700">
-                        <div className="flex justify-between">
-                          <span>• 제시어 연관성</span>
-                          <span className="font-medium">50%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>• 창의성 & 독창성</span>
-                          <span className="font-medium">30%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>• 완성도 & 기술</span>
-                          <span className="font-medium">20%</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           )}
@@ -608,12 +535,9 @@ export default function ResultScreen() {
                 다음 라운드
               </Button>
             ) : (
-              <Card className="flex-1 bg-white/95 backdrop-blur-sm">
-                <CardContent className="p-4 text-center text-gray-600">
-                  <Crown className="h-5 w-5 mx-auto mb-2 text-yellow-500" />
-                  방장이 다음 라운드를 시작할 때까지 기다려주세요...
-                </CardContent>
-              </Card>
+              <Button disabled className="flex-1 bg-gray-300 text-gray-600" size="lg">
+                방장이 다음 라운드를 시작할 때까지 기다려주세요...
+              </Button>
             )}
 
             <Button onClick={() => setShowLeaveAlert(true)} variant="outline" size="lg" className="bg-white/90">
@@ -630,14 +554,14 @@ export default function ResultScreen() {
                   <ImageIcon className="h-5 w-5 text-purple-500" />
                   참가자 작품 갤러리
                 </CardTitle>
-                <p className="text-sm text-gray-600">최대 3개 씩 작품을 감상해보세요</p>
+                <p className="text-sm text-gray-600">참가자들의 작품을 감상해보세요</p>
               </CardHeader>
               <CardContent>
                 <Carousel setApi={setCarouselApi} opts={{ loop: true }} className="w-full">
                   <CarouselContent>
                     {chunkArray(sortedPlayers, 3).map((group, idx) => (
-                      <CarouselItem key={idx} className="px-2">
-                        <div className="flex justify-center gap-6 py-4">
+                      <CarouselItem key={idx}>
+                        <div className="grid grid-cols-3 gap-4 px-4 py-6">
                           {group.map((player) => {
                             const imgBase = drawings[player.id]
                             const imgSrc = !imgBase
@@ -649,21 +573,41 @@ export default function ResultScreen() {
                               (player as any).aiScore !== undefined
                                 ? (player as any).aiScore
                                 : scores[player.id] || 0
+                            
+                            // 순위에 따른 테두리 스타일
+                            const playerRank = sortedPlayers.findIndex(p => p.id === player.id) + 1
+                            const borderClass = 
+                              playerRank === 1 ? "border-4 border-yellow-400 shadow-lg shadow-yellow-400/50" :
+                              playerRank === 2 ? "border-4 border-gray-400 shadow-lg shadow-gray-400/50" :
+                              playerRank === 3 ? "border-4 border-orange-400 shadow-lg shadow-orange-400/50" :
+                              "border-2 border-gray-200"
+                            
                             return (
-                              <div key={player.id} className="flex flex-col items-center w-48">
+                              <div key={player.id} className="flex flex-col items-center">
                                 {/* 그림 */}
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={imgSrc}
                                   alt={`${player.nickname} 그림`}
-                                  className="w-48 h-48 object-contain rounded-lg border shadow-md bg-gray-100"
+                                  className={`w-full aspect-square object-cover rounded-lg bg-gray-100 ${borderClass}`}
                                 />
                                 {/* 캡션 */}
-                                <div className="mt-2 text-center">
-                                  <div className="font-medium text-gray-800 truncate">
-                                    {player.nickname}
+                                <div className="mt-3 text-center w-full">
+                                  <div className="flex items-center justify-center gap-2 mb-1">
+                                    {playerRank <= 3 && (
+                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                                        playerRank === 1 ? "bg-yellow-500" :
+                                        playerRank === 2 ? "bg-gray-500" :
+                                        "bg-orange-500"
+                                      }`}>
+                                        {playerRank}
+                                      </div>
+                                    )}
+                                    <div className="font-medium text-gray-800 truncate">
+                                      {player.nickname}
+                                    </div>
                                   </div>
-                                  <div className="text-sm text-gray-600">{scoreValue}점</div>
+                                  <div className="text-sm text-gray-600 font-medium">{scoreValue}점</div>
                                 </div>
                               </div>
                             )
